@@ -43,19 +43,32 @@ apt-get install -y --no-install-recommends casper overlayroot \
   python3 python3-psutil \
   nmap wireshark tshark aircrack-ng hydra john nikto sqlmap netcat-openbsd tcpdump macchanger hashcat dirb hping3
 
-# Directory setup to prevent crash.init error
-mkdir -p /var/crash /var/log /home/retro
+# Casper-ന് ആവശ്യമായ ഡയറക്ടറികളും ഫയലുകളും
+mkdir -p /var/crash /var/log /etc/default /etc/apt/apt.conf.d /home/retro /home/ubuntu
+touch /etc/default/apport
+touch /etc/apt/apt.conf.d/50unattended-upgrades
 
-# Default user setup (retro / retro)
-if ! id -u retro >/dev/null 2>&1; then
-    useradd -m -s /bin/bash -G sudo retro
-    echo "retro:retro" | chpasswd
-    echo "root:retro" | chpasswd
-fi
-echo "retro ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/retro
-chmod 0440 /etc/sudoers.d/retro
+# Casper ആവശ്യപ്പെടുന്ന ubuntu യൂസറും നമ്മുടെ retro യൂസറും ഉണ്ടാക്കുന്നു
+for u in ubuntu retro; do
+  if ! id -u "$u" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo "$u"
+    echo "$u:$u" | chpasswd
+  fi
+  echo "$u ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$u"
+  chmod 0440 "/etc/sudoers.d/$u"
+done
+echo "root:retro" | chpasswd
 
-# Update initramfs with casper scripts
+# TTY1-ൽ നേരിട്ട് retro യൂസറിലേക്ക് ഓട്ടോലോഗിൻ
+mkdir -p /etc/systemd/system/getty@tty1.service.d/
+cat > /etc/systemd/system/getty@tty1.service.d/override.conf << 'EOF_GETTY'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --noissue --autologin retro %I $TERM
+Type=idle
+EOF_GETTY
+
+# Casper സ്ക്രിപ്റ്റുകൾ ഉൾപ്പെടുത്തി initramfs നിർമ്മിക്കുന്നു
 kernel_version=$(ls /lib/modules | head -n1)
 if [ -n "$kernel_version" ]; then
     update-initramfs -u -k "$kernel_version"
@@ -93,12 +106,12 @@ cat > "$WORK/iso/boot/grub/grub.cfg" << 'EOF'
 set timeout=5
 set default=0
 
-menuentry "Retro OS v2.0 Ultra-Light (Live Desktop)" {
+menuentry "Retro OS v2.0 Ultra-Light (Live)" {
     linux /casper/vmlinuz boot=casper quiet splash ---
     initrd /casper/initrd.img
 }
 
-menuentry "Retro OS v2.0 (Safe Mode / Recovery)" {
+menuentry "Retro OS v2.0 (Verbose Debug Mode)" {
     linux /casper/vmlinuz boot=casper nomodeset ---
     initrd /casper/initrd.img
 }
