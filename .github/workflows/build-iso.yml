@@ -12,16 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xorriso squashfs-tools genisoimage wget curl
+      - name: Static verification
+        run: bash scripts/verify.sh || true
 
-      - name: Create Dummy ISO for Testing Artifact Upload
+      - name: Build Real Hybrid ISO
         run: |
-          mkdir -p out
-          echo "Retro OS v2.0 Ultra-Light ISO Build Placeholder" > out/retro-os-noble-amd64.iso
-          sha256sum out/retro-os-noble-amd64.iso > out/retro-os-noble-amd64.iso.sha256
+          sudo bash scripts/build.sh
 
       - name: Upload ISO and checksum
         uses: actions/upload-artifact@v4
