@@ -15,7 +15,7 @@ apt-get update
 apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools python3
 
 rm -rf "$WORK" "$OUT"
-mkdir -p "$WORK/iso/boot/grub" "$WORK/rootfs" "$OUT"
+mkdir -p "$WORK/iso/boot/grub" "$WORK/iso/casper" "$WORK/rootfs" "$OUT"
 
 echo "[*] Bootstrapping Ubuntu 24.04 LTS ($SUITE)..."
 debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,initramfs-tools,btrfs-progs,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
@@ -35,12 +35,16 @@ mount --bind /sys "$WORK/rootfs/sys"
 chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_EOF'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends zram-tools earlyoom espeak-ng nftables tor usbguard nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
 
-# Generate initramfs safely
+# casper ലൈവ് ബൂട്ടിന് അത്യാവശ്യമാണ്
+apt-get install -y --no-install-recommends casper lupin-casper \
+  zram-tools earlyoom espeak-ng nftables tor usbguard \
+  nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
+
+# Generate initramfs with casper live scripts
 kernel_version=$(ls /lib/modules | head -n1)
 if [ -n "$kernel_version" ]; then
-    update-initramfs -c -k "$kernel_version"
+    update-initramfs -u -k "$kernel_version"
 fi
 CHROOT_EOF
 
@@ -54,34 +58,34 @@ mkdir -p "$WORK/rootfs/opt/retro-ai" "$WORK/rootfs/usr/local/bin"
 cp "$ROOT/rootfs/opt/retro-ai/bujji.py" "$WORK/rootfs/opt/retro-ai/bujji.py" 2>/dev/null || true
 cp "$ROOT/rootfs/usr/local/bin/retro" "$WORK/rootfs/usr/local/bin/retro" 2>/dev/null || true
 
-echo "[*] Copying kernel and initrd to ISO boot directory..."
+echo "[*] Copying kernel and initrd to ISO casper directory..."
 kernel_v=$(ls "$WORK/rootfs/boot" | grep '^vmlinuz-' | head -n1)
 initrd_v=$(ls "$WORK/rootfs/boot" | grep '^initrd.img-' | head -n1)
 
 [[ -n "$kernel_v" ]] || { echo "Error: Kernel vmlinuz not found in chroot." >&2; exit 1; }
 [[ -n "$initrd_v" ]] || { echo "Error: initrd.img not found in chroot." >&2; exit 1; }
 
-cp "$WORK/rootfs/boot/$kernel_v" "$WORK/iso/boot/vmlinuz"
-cp "$WORK/rootfs/boot/$initrd_v" "$WORK/iso/boot/initrd.img"
+cp "$WORK/rootfs/boot/$kernel_v" "$WORK/iso/casper/vmlinuz"
+cp "$WORK/rootfs/boot/$initrd_v" "$WORK/iso/casper/initrd.img"
 
-echo "[*] Configuring GRUB bootloader for UEFI + BIOS..."
+echo "[*] Configuring GRUB bootloader for Live Boot..."
 cat > "$WORK/iso/boot/grub/grub.cfg" << 'EOF'
 set timeout=5
 set default=0
 
-menuentry "Retro OS v2.0 Ultra-Light (Live / Install)" {
-    linux /boot/vmlinuz boot=live quiet splash
-    initrd /boot/initrd.img
+menuentry "Retro OS v2.0 Ultra-Light (Live)" {
+    linux /casper/vmlinuz boot=casper quiet splash ---
+    initrd /casper/initrd.img
 }
 
-menuentry "Retro OS v2.0 (Safe Mode / Recovery)" {
-    linux /boot/vmlinuz boot=live nomodeset
-    initrd /boot/initrd.img
+menuentry "Retro OS v2.0 (Safe Graphics / Recovery)" {
+    linux /casper/vmlinuz boot=casper nomodeset ---
+    initrd /casper/initrd.img
 }
 EOF
 
-echo "[*] Packing rootfs into squashfs..."
-mksquashfs "$WORK/rootfs" "$WORK/iso/filesystem.squashfs" -comp zstd -Xcompression-level 6 -b 1024k
+echo "[*] Packing rootfs into casper/filesystem.squashfs..."
+mksquashfs "$WORK/rootfs" "$WORK/iso/casper/filesystem.squashfs" -comp zstd -Xcompression-level 6 -b 1024k
 
 echo "[*] Generating Hybrid Bootable ISO image..."
 grub-mkrescue -o "$OUT/retro-os-noble-amd64.iso" "$WORK/iso" -- -volid "RETRO_OS_V2"
