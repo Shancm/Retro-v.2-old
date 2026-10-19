@@ -27,7 +27,7 @@ deb http://archive.ubuntu.com/ubuntu/ $SUITE-updates main universe restricted mu
 deb http://security.ubuntu.com/ubuntu/ $SUITE-security main universe restricted multiverse
 EOF
 
-echo "[*] Configuring chroot and installing additional security & utility packages..."
+echo "[*] Configuring chroot and installing packages..."
 mount --bind /dev "$WORK/rootfs/dev"
 mount --bind /proc "$WORK/rootfs/proc"
 mount --bind /sys "$WORK/rootfs/sys"
@@ -36,6 +36,12 @@ chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_EOF'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends zram-tools earlyoom espeak-ng nftables tor usbguard nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
+
+# Ensure initramfs is correctly generated for the installed kernel
+kernel_version=$(ls /lib/modules | head -n1)
+if [ -n "$kernel_version" ]; then
+    update-initramfs -c -k "$kernel_version"
+fi
 CHROOT_EOF
 
 umount "$WORK/rootfs/sys"
@@ -45,13 +51,17 @@ umount "$WORK/rootfs/dev"
 echo "[*] Injecting Retro OS configurations and modules..."
 cp -r "$ROOT/config" "$WORK/rootfs/etc/retro"
 mkdir -p "$WORK/rootfs/opt/retro-ai" "$WORK/rootfs/usr/local/bin"
-cp "$ROOT/rootfs/opt/retro-ai/bujji.py" "$WORK/rootfs/opt/retro-ai/bujji.py"
+cp "$ROOT/rootfs/opt/retro-ai/bujji.py" "$WORK/rootfs/opt/retro-ai/bujji.py" 2>/dev/null || true
 cp "$ROOT/rootfs/usr/local/bin/retro" "$WORK/rootfs/usr/local/bin/retro" 2>/dev/null || true
-chmod +x "$WORK/rootfs/opt/retro-ai/bujji.py"
 
 echo "[*] Copying kernel and initrd to ISO boot directory..."
-kernel_v=$(ls "$WORK/rootfs/boot" | grep vmlinuz | head -n1)
-initrd_v=$(ls "$WORK/rootfs/boot" | grep initrd.img | head -n1)
+# Find kernel and initrd dynamically using pattern matching
+kernel_v=$(ls "$WORK/rootfs/boot" | grep '^vmlinuz-' | head -n1)
+initrd_v=$(ls "$WORK/rootfs/boot" | grep '^initrd.img-' | head -n1)
+
+[[ -n "$kernel_v" ]] || { echo "Error: Kernel vmlinuz not found in chroot." >&2; exit 1; }
+[[ -n "$initrd_v" ]] || { echo "Error: initrd.img not found in chroot." >&2; exit 1; }
+
 cp "$WORK/rootfs/boot/$kernel_v" "$WORK/iso/boot/vmlinuz"
 cp "$WORK/rootfs/boot/$initrd_v" "$WORK/iso/boot/initrd.img"
 
@@ -66,16 +76,4 @@ menuentry "Retro OS v2.0 Ultra-Light (Live / Install)" {
 }
 
 menuentry "Retro OS v2.0 (Safe Mode / Recovery)" {
-    linux /boot/vmlinuz boot=live nomodeset
-    initrd /boot/initrd.img
-}
-EOF
-
-echo "[*] Packing rootfs into squashfs..."
-mksquashfs "$WORK/rootfs" "$WORK/iso/filesystem.squashfs" -comp zstd -Xcompression-level 6 -b 1024k
-
-echo "[*] Generating Hybrid Bootable ISO image..."
-grub-mkrescue -o "$OUT/retro-os-noble-amd64.iso" "$WORK/iso" -- -volid "RETRO_OS_V2"
-
-sha256sum "$OUT/retro-os-noble-amd64.iso" > "$OUT/retro-os-noble-amd64.iso.sha256"
-echo "[+] Success! Real ISO generated at: $OUT/retro-os-noble-amd64.iso"
+    linux /boot/vmlinuz boot=live nomodes
