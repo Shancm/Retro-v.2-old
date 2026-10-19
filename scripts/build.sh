@@ -18,7 +18,22 @@ rm -rf "$WORK" "$OUT"
 mkdir -p "$WORK/iso/boot/grub" "$WORK/rootfs" "$OUT"
 
 echo "[*] Bootstrapping Ubuntu 24.04 LTS ($SUITE)..."
-debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,btrfs-progs,zram-tools,earlyoom,nftables,python3,python3-psutil,espeak-ng,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
+debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,btrfs-progs,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
+
+echo "[*] Configuring chroot and installing additional security & utility packages..."
+mount --bind /dev "$WORK/rootfs/dev"
+mount --bind /proc "$WORK/rootfs/proc"
+mount --bind /sys "$WORK/rootfs/sys"
+
+chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_EOF'
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends zram-tools earlyoom espeak-ng nftables tor usbguard nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
+CHROOT_EOF
+
+umount "$WORK/rootfs/sys"
+umount "$WORK/rootfs/proc"
+umount "$WORK/rootfs/dev"
 
 echo "[*] Injecting Retro OS configurations and modules..."
 cp -r "$ROOT/config" "$WORK/rootfs/etc/retro"
