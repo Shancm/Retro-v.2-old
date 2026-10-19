@@ -18,7 +18,7 @@ rm -rf "$WORK" "$OUT"
 mkdir -p "$WORK/iso/boot/grub" "$WORK/rootfs" "$OUT"
 
 echo "[*] Bootstrapping Ubuntu 24.04 LTS ($SUITE)..."
-debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,btrfs-progs,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
+debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,initramfs-tools,btrfs-progs,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
 
 echo "[*] Enabling universe and multiverse repositories in chroot..."
 cat > "$WORK/rootfs/etc/apt/sources.list" << EOF
@@ -37,7 +37,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends zram-tools earlyoom espeak-ng nftables tor usbguard nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
 
-# Ensure initramfs is correctly generated for the installed kernel
+# Generate initramfs safely
 kernel_version=$(ls /lib/modules | head -n1)
 if [ -n "$kernel_version" ]; then
     update-initramfs -c -k "$kernel_version"
@@ -55,7 +55,6 @@ cp "$ROOT/rootfs/opt/retro-ai/bujji.py" "$WORK/rootfs/opt/retro-ai/bujji.py" 2>/
 cp "$ROOT/rootfs/usr/local/bin/retro" "$WORK/rootfs/usr/local/bin/retro" 2>/dev/null || true
 
 echo "[*] Copying kernel and initrd to ISO boot directory..."
-# Find kernel and initrd dynamically using pattern matching
 kernel_v=$(ls "$WORK/rootfs/boot" | grep '^vmlinuz-' | head -n1)
 initrd_v=$(ls "$WORK/rootfs/boot" | grep '^initrd.img-' | head -n1)
 
@@ -76,4 +75,16 @@ menuentry "Retro OS v2.0 Ultra-Light (Live / Install)" {
 }
 
 menuentry "Retro OS v2.0 (Safe Mode / Recovery)" {
-    linux /boot/vmlinuz boot=live nomodes
+    linux /boot/vmlinuz boot=live nomodeset
+    initrd /boot/initrd.img
+}
+EOF
+
+echo "[*] Packing rootfs into squashfs..."
+mksquashfs "$WORK/rootfs" "$WORK/iso/filesystem.squashfs" -comp zstd -Xcompression-level 6 -b 1024k
+
+echo "[*] Generating Hybrid Bootable ISO image..."
+grub-mkrescue -o "$OUT/retro-os-noble-amd64.iso" "$WORK/iso" -- -volid "RETRO_OS_V2"
+
+sha256sum "$OUT/retro-os-noble-amd64.iso" > "$OUT/retro-os-noble-amd64.iso.sha256"
+echo "[+] Success! Real ISO generated at: $OUT/retro-os-noble-amd64.iso"
