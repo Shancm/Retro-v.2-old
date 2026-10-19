@@ -20,6 +20,13 @@ mkdir -p "$WORK/iso/boot/grub" "$WORK/rootfs" "$OUT"
 echo "[*] Bootstrapping Ubuntu 24.04 LTS ($SUITE)..."
 debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,btrfs-progs,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
 
+echo "[*] Enabling universe and multiverse repositories in chroot..."
+cat > "$WORK/rootfs/etc/apt/sources.list" << EOF
+deb http://archive.ubuntu.com/ubuntu/ $SUITE main universe restricted multiverse
+deb http://archive.ubuntu.com/ubuntu/ $SUITE-updates main universe restricted multiverse
+deb http://security.ubuntu.com/ubuntu/ $SUITE-security main universe restricted multiverse
+EOF
+
 echo "[*] Configuring chroot and installing additional security & utility packages..."
 mount --bind /dev "$WORK/rootfs/dev"
 mount --bind /proc "$WORK/rootfs/proc"
