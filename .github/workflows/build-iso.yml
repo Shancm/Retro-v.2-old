@@ -13,10 +13,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Static verification
-        run: bash scripts/verify.sh || true
+        run: |
+          chmod +x scripts/*.sh stages/**/*.sh 2>/dev/null || true
+          bash scripts/verify.sh || true
 
       - name: Build Real Hybrid ISO
         run: |
+          chmod +x scripts/build.sh
           sudo bash scripts/build.sh
 
       - name: Upload ISO and checksum
