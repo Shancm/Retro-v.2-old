@@ -36,8 +36,8 @@ chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_EOF'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 
-# casper ലൈവ് ബൂട്ടിന് അത്യാവശ്യമാണ്
-apt-get install -y --no-install-recommends casper lupin-casper \
+# casper മാത്രം മതിയാകും (lupin-casper ഒഴിവാക്കി)
+apt-get install -y --no-install-recommends casper \
   zram-tools earlyoom espeak-ng nftables tor usbguard \
   nmap aircrack-ng hydra john sqlmap netcat-openbsd tcpdump macchanger hashcat hping3
 
