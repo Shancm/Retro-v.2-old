@@ -36,19 +36,19 @@ chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_EOF'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 
-# Live boot + Desktop components (Labwc, Waybar, Wofi, Foot)
+# Live boot + Desktop components
 apt-get install -y --no-install-recommends casper overlayroot \
   labwc waybar wofi foot \
   zram-tools earlyoom espeak-ng nftables tor usbguard \
   python3 python3-psutil \
   nmap wireshark tshark aircrack-ng hydra john nikto sqlmap netcat-openbsd tcpdump macchanger hashcat dirb hping3
 
-# Casper-ന് ആവശ്യമായ ഡയറക്ടറികളും ഫയലുകളും
+# Required directories & empty config placeholders
 mkdir -p /var/crash /var/log /etc/default /etc/apt/apt.conf.d /home/retro /home/ubuntu
 touch /etc/default/apport
 touch /etc/apt/apt.conf.d/50unattended-upgrades
 
-# Casper ആവശ്യപ്പെടുന്ന ubuntu യൂസറും നമ്മുടെ retro യൂസറും ഉണ്ടാക്കുന്നു
+# Create users: retro and ubuntu
 for u in ubuntu retro; do
   if ! id -u "$u" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$u"
@@ -59,7 +59,7 @@ for u in ubuntu retro; do
 done
 echo "root:retro" | chpasswd
 
-# TTY1-ൽ നേരിട്ട് retro യൂസറിലേക്ക് ഓട്ടോലോഗിൻ
+# Autologin on TTY1
 mkdir -p /etc/systemd/system/getty@tty1.service.d/
 cat > /etc/systemd/system/getty@tty1.service.d/override.conf << 'EOF_GETTY'
 [Service]
@@ -67,21 +67,29 @@ ExecStart=
 ExecStart=-/sbin/agetty --noissue --autologin retro %I $TERM
 Type=idle
 EOF_GETTY
-
-# Casper സ്ക്രിപ്റ്റുകൾ ഉൾപ്പെടുത്തി initramfs നിർമ്മിക്കുന്നു
-kernel_version=$(ls /lib/modules | head -n1)
-if [ -n "$kernel_version" ]; then
-    update-initramfs -u -k "$kernel_version"
-fi
 CHROOT_EOF
 
-echo "[*] Step 5: Executing modular stage scripts..."
+echo "[*] Step 5: Executing modular stage scripts inside target rootfs..."
 for stage in "$ROOT"/stages/*/setup.sh; do
   if [ -f "$stage" ]; then
-    echo "[*] Running stage: $(basename "$(dirname "$stage")")"
-    bash "$stage" "$WORK/rootfs" || true
+    stage_dir="$(basename "$(dirname "$stage")")"
+    echo "[*] Running stage safely inside chroot: $stage_dir"
+    cp "$stage" "$WORK/rootfs/tmp/stage_setup.sh"
+    chmod +x "$WORK/rootfs/tmp/stage_setup.sh"
+    chroot "$WORK/rootfs" /bin/bash -e /tmp/stage_setup.sh / || true
+    rm -f "$WORK/rootfs/tmp/stage_setup.sh"
   fi
 done
+
+echo "[*] Finalizing kernel initramfs generation inside chroot..."
+chroot "$WORK/rootfs" /bin/bash -e << 'CHROOT_KNL'
+export DEBIAN_FRONTEND=noninteractive
+latest_kernel=$(ls /lib/modules | sort -V | tail -n1)
+if [ -n "$latest_kernel" ]; then
+    echo "[*] Updating initramfs for $latest_kernel with casper support..."
+    update-initramfs -u -k "$latest_kernel" || update-initramfs -c -k "$latest_kernel"
+fi
+CHROOT_KNL
 
 umount "$WORK/rootfs/sys"
 umount "$WORK/rootfs/proc"
@@ -95,9 +103,12 @@ cp "$ROOT/rootfs/usr/local/bin/retro" "$WORK/rootfs/usr/local/bin/retro" 2>/dev/
 chmod +x "$WORK/rootfs/opt/retro-ai/bujji.py" 2>/dev/null || true
 chmod +x "$WORK/rootfs/usr/local/bin/retro" 2>/dev/null || true
 
-echo "[*] Step 7: Preparing bootloader and kernel..."
-kernel_v=$(ls "$WORK/rootfs/boot" | grep '^vmlinuz-' | head -n1)
-initrd_v=$(ls "$WORK/rootfs/boot" | grep '^initrd.img-' | head -n1)
+echo "[*] Step 7: Preparing bootloader, kernel, and initrd..."
+kernel_v=$(ls "$WORK/rootfs/boot" | grep '^vmlinuz-' | sort -V | tail -n1)
+initrd_v=$(ls "$WORK/rootfs/boot" | grep '^initrd.img-' | sort -V | tail -n1)
+
+echo "[*] Selected Kernel: $kernel_v"
+echo "[*] Selected Initrd: $initrd_v"
 
 cp "$WORK/rootfs/boot/$kernel_v" "$WORK/iso/casper/vmlinuz"
 cp "$WORK/rootfs/boot/$initrd_v" "$WORK/iso/casper/initrd.img"
