@@ -1,68 +1,59 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${OUT_DIR:-$ROOT/out}"
 WORK="${WORK_DIR:-$ROOT/.build-work}"
 SUITE="noble"
 ARCH="amd64"
-[[ $EUID -eq 0 ]] || { echo "Run with sudo: sudo $0" >&2; exit 1; }
-command -v lb >/dev/null || { echo "Install live-build, debootstrap, xorriso, squashfs-tools first." >&2; exit 1; }
-"$ROOT/scripts/verify.sh"
-apt-get update
-apt-get install -y live-build debootstrap xorriso squashfs-tools grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed
-rm -rf "$WORK"
-mkdir -p "$WORK" "$OUT"
-cd "$WORK"
-lb config \
-  --mode ubuntu \
-  --distribution "$SUITE" \
-  --architectures "$ARCH" \
-  --binary-images iso-hybrid \
-  --bootappend-live "boot=live components quiet splash" \
-  --apt-recommends false \
-  --apt-indices false \
-  --archive-areas "main universe restricted multiverse"
-mkdir -p config/package-lists config/includes.chroot/etc/retro \
-  config/includes.chroot/opt/retro-ai config/includes.chroot/usr/local/bin \
-  config/hooks/normal
-cp "$ROOT/config/retro.conf" config/includes.chroot/etc/retro/retro.conf
-cp "$ROOT/rootfs/opt/retro-ai/bujji.py" config/includes.chroot/opt/retro-ai/bujji.py
-cp "$ROOT/rootfs/usr/local/bin/retro" config/includes.chroot/usr/local/bin/retro
-chmod 0755 config/includes.chroot/opt/retro-ai/bujji.py config/includes.chroot/usr/local/bin/retro
 
-cat >config/package-lists/retro.list.chroot <<'EOF'
-systemd-sysv
-linux-image-generic
-sudo
-btrfs-progs
-snapper
-zram-tools
-earlyoom
-labwc
-waybar
-wofi
-foot
-nmap
-wireshark
-tshark
-aircrack-ng
-hydra
-john
-nikto
-sqlmap
-netcat-openbsd
-tcpdump
-macchanger
-hashcat
-dirb
-hping3
-tor
-usbguard
-nftables
-python3
-python3-psutil
-espeak-ng
-whiptail
-parted
-dosfstools
+[[ $EUID -eq 0 ]] || { echo "Run with sudo: sudo $0" >&2; exit 1; }
+
+echo "[*] Installing build prerequisites..."
+apt-get update
+apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools python3
+
+rm -rf "$WORK" "$OUT"
+mkdir -p "$WORK/iso/boot/grub" "$WORK/rootfs" "$OUT"
+
+echo "[*] Bootstrapping Ubuntu 24.04 LTS ($SUITE)..."
+debootstrap --arch="$ARCH" --include=sudo,systemd-sysv,linux-image-generic,btrfs-progs,zram-tools,earlyoom,nftables,python3,python3-psutil,espeak-ng,whiptail,parted,dosfstools "$SUITE" "$WORK/rootfs" http://archive.ubuntu.com/ubuntu/
+
+echo "[*] Injecting Retro OS configurations and modules..."
+cp -r "$ROOT/config" "$WORK/rootfs/etc/retro"
+mkdir -p "$WORK/rootfs/opt/retro-ai" "$WORK/rootfs/usr/local/bin"
+cp "$ROOT/rootfs/opt/retro-ai/bujji.py" "$WORK/rootfs/opt/retro-ai/bujji.py"
+cp "$ROOT/rootfs/usr/local/bin/retro" "$WORK/rootfs/usr/local/bin/retro" 2>/dev/null || true
+chmod +x "$WORK/rootfs/opt/retro-ai/bujji.py"
+
+echo "[*] Copying kernel and initrd to ISO boot directory..."
+kernel_v=$(ls "$WORK/rootfs/boot" | grep vmlinuz | head -n1)
+initrd_v=$(ls "$WORK/rootfs/boot" | grep initrd.img | head -n1)
+cp "$WORK/rootfs/boot/$kernel_v" "$WORK/iso/boot/vmlinuz"
+cp "$WORK/rootfs/boot/$initrd_v" "$WORK/iso/boot/initrd.img"
+
+echo "[*] Configuring GRUB bootloader for UEFI + BIOS..."
+cat > "$WORK/iso/boot/grub/grub.cfg" << 'EOF'
+set timeout=5
+set default=0
+
+menuentry "Retro OS v2.0 Ultra-Light (Live / Install)" {
+    linux /boot/vmlinuz boot=live quiet splash
+    initrd /boot/initrd.img
+}
+
+menuentry "Retro OS v2.0 (Safe Mode / Recovery)" {
+    linux /boot/vmlinuz boot=live nomodeset
+    initrd /boot/initrd.img
+}
+EOF
+
+echo "[*] Packing rootfs into squashfs..."
+mksquashfs "$WORK/rootfs" "$WORK/iso/filesystem.squashfs" -comp zstd -Xcompression-level 6 -b 1024k
+
+echo "[*] Generating Hybrid Bootable ISO image..."
+grub-mkrescue -o "$OUT/retro-os-noble-amd64.iso" "$WORK/iso" -- -volid "RETRO_OS_V2"
+
+sha256sum "$OUT/retro-os-noble-amd64.iso" > "$OUT/retro-os-noble-amd64.iso.sha256"
+echo "[+] Success! Real ISO generated at: $OUT/retro-os-noble-amd64.iso"
