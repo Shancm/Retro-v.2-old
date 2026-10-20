@@ -6,18 +6,26 @@
 # (GRUB on UEFI targets, extlinux/grub-pc fallback on legacy BIOS targets;
 # Btrfs + Snapper only when the user picks Btrfs in the partitioner).
 # =============================================================================
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Sourcing config.env safely
-if [ -f "/tmp/retro-build/config.env" ]; then
-    source "/tmp/retro-build/config.env"
-elif [ -f "./config.env" ]; then
-    source "./config.env"
-fi
+# Logging helpers
+retro_info()  { echo -e "\033[0;36m[*] $*\033[0m"; }
+retro_ok()    { echo -e "\033[0;32m[+] $*\033[0m"; }
+retro_warn()  { echo -e "\033[0;33m[!] $*\033[0m"; }
+retro_error() { echo -e "\033[0;31m[x] $*\033[0m"; }
 
 trap 'retro_error "setup_calamares.sh failed at line ${LINENO} (exit ${?})"' ERR
 
 export DEBIAN_FRONTEND=noninteractive
+
+RETRO_OS_NAME="Retro OS"
+RETRO_OS_VERSION="2.0"
+RETRO_OS_CODENAME="retro-os"
+RETRO_OS_EDITION="Tactical"
+RETRO_BG_COLOR="#0C0D12"
+RETRO_FG_COLOR="#E0E0E0"
+RETRO_ACCENT_COLOR="#00FF9C"
 
 retro_info "[calamares] Installing Calamares + dependencies"
 apt-get install -y --no-install-recommends \
