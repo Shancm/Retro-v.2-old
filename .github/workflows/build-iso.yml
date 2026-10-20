@@ -1,0 +1,111 @@
+name: Build Retro OS v2.0 ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      debian_suite:
+        description: "Debian suite to build against"
+        required: false
+        default: "bookworm"
+        type: choice
+        options: [bookworm, trixie]
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "overlay/**"
+      - "config.env"
+      - "build.sh"
+      - ".github/workflows/build-iso.yml"
+
+concurrency:
+  group: retro-os-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build hybrid BIOS/UEFI ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: debian:bookworm
+      options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          set -Eeuo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            debootstrap squashfs-tools xorriso isolinux syslinux-common \
+            syslinux-utils grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed \
+            mtools dosfstools zstd ca-certificates sudo binutils \
+            git curl wget
+
+      - name: Override Debian suite (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          sed -i "s/^export DEBIAN_SUITE=.*/export DEBIAN_SUITE=\"${{ inputs.debian_suite }}\"/" config.env
+
+      - name: Make scripts executable
+        run: |
+          chmod +x build.sh scripts/*.sh overlay/usr/local/bin/retro
+
+      - name: Run Retro OS build
+        run: |
+          ./build.sh --bootstrap-host --clean
+        env:
+          BUILD_ROOT: ${{ github.workspace }}/build
+
+      - name: Verify artifact
+        run: |
+          set -Eeuo pipefail
+          ls -lh build/out/
+          cd build/out
+          sha256sum -c ./*.sha256
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retro-os-v2-iso
+          path: |
+            build/out/*.iso
+            build/out/*.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retro-os-v2-build-log
+          path: |
+            build/chroot/var/log/retro-os/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Retro OS v2.0 build summary"
+            echo
+            if ls build/out/*.iso >/dev/null 2>&1; then
+              echo "✅ ISO built successfully"
+              echo
+              echo '```'
+              ls -lh build/out/
+              echo '```'
+              echo
+              echo "SHA-256:"
+              echo '```'
+              cat build/out/*.sha256
+              echo '```'
+            else
+              echo "❌ Build failed — see job logs and the retro-os-v2-build-log artifact"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
