@@ -10,10 +10,12 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# config.env is copied next to this script inside the chroot at /tmp/retro-build/
-# shellcheck source=/dev/null
-source "${SELF_DIR}/config.env"
+# Sourcing config.env safely
+if [ -f "/tmp/retro-build/config.env" ]; then
+    source "/tmp/retro-build/config.env"
+elif [ -f "./config.env" ]; then
+    source "./config.env"
+fi
 
 trap 'retro_error "01_engine_setup.sh failed at line ${LINENO} (exit ${?})"' ERR
 
