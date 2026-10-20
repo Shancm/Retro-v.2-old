@@ -199,12 +199,12 @@ MENU TITLE ${RETRO_OS_NAME} v${RETRO_OS_VERSION}
 LABEL retro_live
   MENU LABEL ${RETRO_OS_NAME} ${RETRO_OS_VERSION} — Live
   KERNEL /live/vmlinuz
-  APPEND initrd=/live/initrd.img boot=live components quiet splash
+  APPEND initrd=/live/initrd.img boot=live components quiet splash nowatchdog udev.children_max=1
 
 LABEL retro_live_safe
   MENU LABEL ${RETRO_OS_NAME} ${RETRO_OS_VERSION} — Live (safe graphics / failsafe)
   KERNEL /live/vmlinuz
-  APPEND initrd=/live/initrd.img boot=live components nomodeset noapic acpi=off
+  APPEND initrd=/live/initrd.img boot=live components nomodeset noapic acpi=off nowatchdog
 
 LABEL retro_install
   MENU LABEL Install ${RETRO_OS_NAME} to disk (Calamares)
