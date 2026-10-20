@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Retro OS v2.0 — /usr/local/bin/retro
+# System control wrapper: doctor, bujji, ghost, kali, info.
+# =============================================================================
+set -Eeuo pipefail
+
+RETRO_ETC_DIR="/etc/retro-os"
+RETRO_AI_DIR="/opt/retro-ai"
+RETRO_LOG_DIR="/var/log/retro-os"
+LOG_FILE="${RETRO_LOG_DIR}/retro-cli.log"
+
+C_RESET='\033[0m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'
+C_YELLOW='\033[0;33m'; C_CYAN='\033[0;36m'; C_BOLD='\033[1m'
+
+log() {
+    mkdir -p "${RETRO_LOG_DIR}" 2>/dev/null || true
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
+die() { echo -e "${C_RED}[x]${C_RESET} $*" >&2; exit 1; }
+
+usage() {
+    cat <<EOF
+${C_BOLD}retro${C_RESET} — Retro OS v2.0 control wrapper
+
+Usage: retro <command> [options]
+
+Commands:
+  doctor [--silent]   System health check (RAM/disk/services) via Bujji AI
+  bujji               Open the interactive Bujji AI companion shell
+  info                Print OS release info
+  ghost               Toggle anonymity mode (MAC spoof + nftables lockdown)
+  ghost status        Show current ghost-mode state
+  ghost off           Disable ghost mode, restore normal networking
+  kali                Enter (or create) the rootless 'retro-kali' toolbox
+  help                Show this message
+EOF
+}
+
+cmd_info() {
+    [[ -f "${RETRO_ETC_DIR}/release" ]] || die "release file missing"
+    # shellcheck source=/dev/null
+    source "${RETRO_ETC_DIR}/release"
+    echo "${RETRO_OS_NAME} ${RETRO_OS_VERSION} \"${RETRO_OS_EDITION}\" (${RETRO_OS_CODENAME})"
+    echo "Base: Debian ${DEBIAN_SUITE}"
+    echo "Built: ${BUILD_DATE}"
+}
+
+cmd_doctor() {
+    exec python3 "${RETRO_AI_DIR}/bujji.py" doctor "$@"
+}
+
+cmd_bujji() {
+    exec python3 "${RETRO_AI_DIR}/bujji.py" chat
+}
+
+# -----------------------------------------------------------------------------
+# Ghost mode: on-demand anonymity. Only touches the network when explicitly
+# invoked — never runs automatically at boot.
+# -----------------------------------------------------------------------------
+GHOST_STATE_FILE="/var/lib/retro-os/ghost.state"
+
+ghost_default_iface() {
+    ip -o -4 route show to default 2>/dev/null | awk '{print $5; exit}'
+}
+
+cmd_ghost() {
+    local sub="${1:-toggle}"
+    case "${sub}" in
+        status)
+            if [[ -f "${GHOST_STATE_FILE}" ]]; then
+                echo -e "${C_GREEN}[+]${C_RESET} Ghost mode: ACTIVE (since $(cat "${GHOST_STATE_FILE}"))"
+            else
+                echo -e "${C_YELLOW}[!]${C_RESET} Ghost mode: inactive"
+            fi
+            ;;
+        off)
+            [[ "${EUID}" -eq 0 ]] || die "ghost off requires root (sudo retro ghost off)"
+            local iface; iface="$(ghost_default_iface)"
+            if [[ -n "${iface}" ]]; then
+                macchanger -p "${iface}" >/dev/null 2>&1 || true
+            fi
+            nft flush ruleset 2>/dev/null || true
+            systemctl stop tor >/dev/null 2>&1 || true
+            rm -f "${GHOST_STATE_FILE}"
+            echo -e "${C_GREEN}[+]${C_RESET} Ghost mode disabled, networking restored."
+            log "ghost mode disabled"
+            ;;
+        toggle|on)
+            [[ "${EUID}" -eq 0 ]] || die "ghost mode requires root (sudo retro ghost)"
+            local iface; iface="$(ghost_default_iface)"
+            [[ -n "${iface}" ]] || die "could not determine default network interface"
+            echo -e "${C_CYAN}[*]${C_RESET} Randomizing MAC on ${iface}..."
+            macchanger -r "${iface}" >/dev/null 2>&1 || echo -e "${C_YELLOW}[!]${C_RESET} macchanger failed (interface may be managed by NetworkManager)"
+            echo -e "${C_CYAN}[*]${C_RESET} Applying nftables DNS-leak lockdown..."
+            nft -f - <<'NFT' 2>/dev/null || echo -e "${C_YELLOW}[!]${C_RESET} nftables rule load failed"
+table inet retro_ghost {
+  chain output {
+    type filter hook output priority 0;
+    udp dport 53 ip daddr != { 127.0.0.1, ::1 } drop
+    tcp dport 53 ip daddr != { 127.0.0.1, ::1 } drop
+  }
+}
+NFT
+            if systemctl list-unit-files tor.service >/dev/null 2>&1; then
+                systemctl start tor >/dev/null 2>&1 || echo -e "${C_YELLOW}[!]${C_RESET} tor not installed/available"
+            fi
+            date '+%Y-%m-%d %H:%M:%S' > "${GHOST_STATE_FILE}"
+            echo -e "${C_GREEN}[+]${C_RESET} Ghost mode active."
+            log "ghost mode enabled on ${iface}"
+            ;;
+        *)
+            die "unknown ghost subcommand: ${sub}"
+            ;;
+    esac
+}
+
+cmd_kali() {
+    if ! command -v distrobox >/dev/null 2>&1; then
+        die "distrobox not installed. Install it first: sudo apt install distrobox podman"
+    fi
+    if ! distrobox list 2>/dev/null | grep -q 'retro-kali'; then
+        echo -e "${C_CYAN}[*]${C_RESET} Creating rootless 'retro-kali' container (first run only)..."
+        distrobox create --name retro-kali --image kalilinux/kali-rolling --yes
+    fi
+    exec distrobox enter retro-kali
+}
+
+main() {
+    local cmd="${1:-help}"; shift || true
+    case "${cmd}" in
+        doctor)  cmd_doctor "$@" ;;
+        bujji)   cmd_bujji ;;
+        info)    cmd_info ;;
+        ghost)   cmd_ghost "$@" ;;
+        kali)    cmd_kali ;;
+        help|-h|--help) usage ;;
+        *) usage; die "unknown command: ${cmd}" ;;
+    esac
+}
+
+main "$@"
