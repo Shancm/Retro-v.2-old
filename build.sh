@@ -123,15 +123,16 @@ if [[ "${SKIP_CHROOT}" -eq 0 ]]; then
     # -------------------------------------------------------------------
     # 2. Copy config.env + scripts into the chroot and execute them
     # -------------------------------------------------------------------
-    retro_info "Staging build scripts into chroot:/tmp/retro-build"
+        retro_info "Staging build scripts into chroot:/tmp/retro-build"
     mkdir -p "${CHROOT_DIR}/tmp/retro-build"
-    cp "${SELF_DIR}/config.env" "${CHROOT_DIR}/tmp/retro-build/config.env"
+    cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/tmp/retro-build/config.env"
+    cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/etc/retro-os/config.env" 2>/dev/null || true
     cp "${SCRIPTS_DIR}"/*.sh "${CHROOT_DIR}/tmp/retro-build/"
-    chmod 755 "${CHROOT_DIR}/tmp/retro-build/"*.sh
+    chmod -R 777 "${CHROOT_DIR}/tmp/retro-build"
 
     for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
         retro_info "Running ${step} in chroot"
-        chroot "${CHROOT_DIR}" /bin/bash "/tmp/retro-build/${step}"
+        chroot "${CHROOT_DIR}" /bin/bash -c "cd /tmp/retro-build && source /tmp/retro-build/config.env && ./${step}"
     done
 
     # -------------------------------------------------------------------
