@@ -5,18 +5,22 @@
 # Installs: ZRAM + EarlyOOM (low-RAM survival), the security auditing suite,
 # and the Bujji AI companion CLI + `retro` wrapper.
 # =============================================================================
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Sourcing config.env safely
-if [ -f "/tmp/retro-build/config.env" ]; then
-    source "/tmp/retro-build/config.env"
-elif [ -f "./config.env" ]; then
-    source "./config.env"
-fi
+retro_info()  { echo -e "\033[0;36m[*] $*\033[0m"; }
+retro_ok()    { echo -e "\033[0;32m[+] $*\033[0m"; }
+retro_warn()  { echo -e "\033[0;33m[!] $*\033[0m"; }
+retro_error() { echo -e "\033[0;31m[x] $*\033[0m"; }
 
 trap 'retro_error "03_modules_setup.sh failed at line ${LINENO} (exit ${?})"' ERR
 
 export DEBIAN_FRONTEND=noninteractive
+
+RETRO_USER="retro"
+RETRO_AI_DIR="/opt/retro-ai"
+RETRO_ETC_DIR="/etc/retro-os"
+RETRO_BIN_DIR="/usr/local/bin"
 
 # -----------------------------------------------------------------------------
 # ZRAM + EarlyOOM — keeps 512MB-1GB boxes alive under memory pressure
