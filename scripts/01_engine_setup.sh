@@ -172,6 +172,6 @@ BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 EOF
 
 retro_info "[01] Copying project config.env into the live image (for retro CLI)"
-install -m 644 "${SELF_DIR}/config.env" "${RETRO_ETC_DIR}/config.env"
+install -m 644 /tmp/retro-build/config.env "${RETRO_ETC_DIR}/config.env"
 
 retro_info "[01] Base engine setup complete"
