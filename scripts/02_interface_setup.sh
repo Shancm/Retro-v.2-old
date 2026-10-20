@@ -7,9 +7,12 @@
 # =============================================================================
 set -Eeuo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
-source "${SELF_DIR}/config.env"
+# Sourcing config.env safely
+if [ -f "/tmp/retro-build/config.env" ]; then
+    source "/tmp/retro-build/config.env"
+elif [ -f "./config.env" ]; then
+    source "./config.env"
+fi
 
 trap 'retro_error "02_interface_setup.sh failed at line ${LINENO} (exit ${?})"' ERR
 
