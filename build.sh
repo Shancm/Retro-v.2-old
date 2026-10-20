@@ -123,14 +123,18 @@ if [[ "${SKIP_CHROOT}" -eq 0 ]]; then
     # -------------------------------------------------------------------
     # 2. Copy config.env + scripts into the chroot and execute them
     # -------------------------------------------------------------------
-        retro_info "Staging build scripts into chroot:/tmp/retro-build"
+    retro_info "Staging build scripts into chroot:/tmp/retro-build"
     mkdir -p "${CHROOT_DIR}/tmp/retro-build"
-    cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/tmp/retro-build/config.env"
-    cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/etc/retro-os/config.env" 2>/dev/null || true
-    cp "${SCRIPTS_DIR}"/*.sh "${CHROOT_DIR}/tmp/retro-build/"
-    chmod -R 777 "${CHROOT_DIR}/tmp/retro-build"
+    cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/tmp/retro-build/config.env" 2>/dev/null || true
+    
+    # scripts ഫോൾഡറിലുള്ളതും പുറത്തുള്ളതുമായ setup_calamares.sh കണ്ടെത്തുന്നു
+    cp "${SCRIPTS_DIR}"/*.sh "${CHROOT_DIR}/tmp/retro-build/" 2>/dev/null || true
+    if [ -f "${SELF_DIR}/setup_calamares.sh" ]; then
+        cp "${SELF_DIR}/setup_calamares.sh" "${CHROOT_DIR}/tmp/retro-build/"
+    fi
+    chmod -R 755 "${CHROOT_DIR}/tmp/retro-build"
 
-       for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
+    for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
         retro_info "Running ${step} in chroot"
         chroot "${CHROOT_DIR}" /bin/bash "/tmp/retro-build/${step}"
     done
