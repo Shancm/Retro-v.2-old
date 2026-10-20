@@ -63,7 +63,7 @@ apt-get install -y --no-install-recommends \
     gvfs-backends \
     xterm \
     lxterminal \
-    xfce4-terminal
+    xfce4-terminal \
     fonts-dejavu \
     fonts-noto-color-emoji \
     papirus-icon-theme \
