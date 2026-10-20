@@ -98,7 +98,7 @@ else
 fi
 
 # 2. Desktop icons & Compositor
-picom --config /etc/skel/.config/picom.conf -b >/dev/null 2>&1 &
+picom --backend xrender -b >/dev/null 2>&1 &
 pcmanfm --desktop >/dev/null 2>&1 &
 
 # 3. Top Panel & Network Applet
