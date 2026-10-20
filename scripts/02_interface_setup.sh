@@ -63,6 +63,7 @@ apt-get install -y --no-install-recommends \
     gvfs-backends \
     xterm \
     lxterminal \
+    xfce4-terminal
     fonts-dejavu \
     fonts-noto-color-emoji \
     papirus-icon-theme \
@@ -165,7 +166,8 @@ cat > "${OB_SKEL}/rc.xml" <<EOF
   </theme>
   <desktops><number>4</number><names><name>Main</name><name>Net</name><name>Tools</name><name>Scratch</name></names></desktops>
   <keyboard>
-    <keybind key="W-Return"><action name="Execute"><command>lxterminal</command></action></keybind>
+    <keybind key="W-Return"><action name="Execute"><command>xfce4-terminal</command></action></keybind>
+    <keybind key="W-S-Return"><action name="Execute"><command>lxterminal</command></action></keybind> 
     <keybind key="W-e"><action name="Execute"><command>pcmanfm</command></action></keybind>
     <keybind key="W-d"><action name="ToggleShowDesktop"/></keybind>
     <keybind key="A-F4"><action name="Close"/></keybind>
@@ -324,6 +326,40 @@ cat > "/var/lib/AccountsService/users/${RETRO_USER}" <<EOF
 Session=openbox
 Icon=/usr/share/pixmaps/retro-os-avatar.png
 SystemAccount=false
+EOF
+
+# -----------------------------------------------------------------------------
+# XFCE Terminal with Custom Background Image Setup
+# -----------------------------------------------------------------------------
+TERMINAL_SKEL="/etc/skel/.config/xfce4/terminal"
+install -d -m 755 "${TERMINAL_SKEL}"
+
+cat > "${TERMINAL_SKEL}/terminalrc" <<'EOF'
+[Configuration]
+FontName=DejaVu Sans Mono 10
+ColorPalette=#000000;#cc0000;#4e9a06;#c4a000;#3465a4;#75507b;#06989a;#d3d7cf;#555753;#ef2929;#8ae234;#fce94f;#729fcf;#ad7fa8;#34e2e2;#eeeeec
+ColorForeground=#00FF9C
+ColorBackground=#0C0D12
+ColorCursor=#00FF9C
+TitleMode=TERMINAL_TITLE_REPLACE
+MiscAlwaysShowTabs=FALSE
+MiscBell=FALSE
+MiscBordersDefault=TRUE
+MiscCursorBlinks=TRUE
+MiscCursorShape=TERMINAL_CURSOR_SHAPE_BLOCK
+MiscDefaultGeometry=80x24
+MiscInheritGeometry=FALSE
+MiscMenubarDefault=FALSE
+MiscMouseAutohide=FALSE
+MiscToolbarDefault=FALSE
+MiscConfirmClose=TRUE
+MiscCycleTabs=TRUE
+MiscTabCloseButtons=TRUE
+MiscTabCloseMiddleClick=TRUE
+MiscShowUnsafePasteDialog=FALSE
+BackgroundMode=TERMINAL_BACKGROUND_IMAGE
+BackgroundImageFile=/usr/share/backgrounds/retro-os/terminal-bg.png
+BackgroundDarkness=0.85
 EOF
 
 retro_info "[02] Enabling display manager + NetworkManager services"
