@@ -7,16 +7,39 @@
 # =============================================================================
 set -Eeuo pipefail
 
-# Sourcing config.env safely
-if [ -f "/tmp/retro-build/config.env" ]; then
-    source "/tmp/retro-build/config.env"
-elif [ -f "./config.env" ]; then
-    source "./config.env"
-fi
+# Self-contained logging helpers
+retro_info()  { echo -e "\033[0;36m[*] $*\033[0m"; }
+retro_ok()    { echo -e "\033[0;32m[+] $*\033[0m"; }
+retro_warn()  { echo -e "\033[0;33m[!] $*\033[0m"; }
+retro_error() { echo -e "\033[0;31m[x] $*\033[0m"; }
+retro_die()   { retro_error "$@"; exit 1; }
 
-trap 'retro_error "02_interface_setup.sh failed at line ${LINENO} (exit ${?})"' ERR
+trap 'retro_error "01_engine_setup.sh failed at line ${LINENO} (exit ${?})"' ERR
 
 export DEBIAN_FRONTEND=noninteractive
+export LC_ALL=C.UTF-8
+
+# Variables
+DEBIAN_SUITE="bookworm"
+DEBIAN_MIRROR="http://deb.debian.org/debian/"
+DEBIAN_SECURITY_MIRROR="http://security.debian.org/debian-security"
+DEBIAN_COMPONENTS="main contrib non-free non-free-firmware"
+RETRO_OS_NAME="Retro OS"
+RETRO_OS_VERSION="2.0"
+RETRO_OS_EDITION="Tactical"
+RETRO_OS_CODENAME="retro-os"
+RETRO_USER="retro"
+RETRO_USER_UID="1000"
+RETRO_USER_PASS="retro"
+RETRO_ROOT_PASS="retro"
+RETRO_ROOT="/opt/retro-os"
+RETRO_AI_DIR="/opt/retro-ai"
+RETRO_ETC_DIR="/etc/retro-os"
+RETRO_LOG_DIR="/var/log/retro-os"
+RETRO_STATE_DIR="/var/lib/retro-os"
+RETRO_BIN_DIR="/usr/local/bin"
+
+retro_info "[01] Configuring apt sources (${DEBIAN_SUITE}: ${DEBIAN_COMPONENTS})"
 
 retro_info "[02] Installing Xorg + Openbox desktop stack"
 apt-get install -y --no-install-recommends \
