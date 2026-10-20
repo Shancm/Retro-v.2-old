@@ -130,9 +130,11 @@ echo 'LANG=en_US.UTF-8' > /etc/default/locale
 
 retro_info "[01] Creating default user '${RETRO_USER}' (UID ${RETRO_USER_UID})"
 if ! id "${RETRO_USER}" >/dev/null 2>&1; then
-    useradd -m -u "${RETRO_USER_UID}" -s /bin/bash \
-        -G sudo,adm,cdrom,dialout,audio,video,plugdev,netdev,bluetooth \
-        "${RETRO_USER}"
+    useradd -m -u "${RETRO_USER_UID}" -s /bin/bash -G sudo "${RETRO_USER}"
+    # നിലവിലുള്ള സുരക്ഷിത ഗ്രൂപ്പുകളിലേക്ക് മാത്രം യൂസറെ ചേർക്കുന്നു
+    for grp in adm cdrom dialout audio video plugdev netdev; do
+        getent group "$grp" >/dev/null 2>&1 && usermod -aG "$grp" "${RETRO_USER}" || true
+    done
 fi
 
 echo "${RETRO_USER}:${RETRO_USER_PASS}" | chpasswd
