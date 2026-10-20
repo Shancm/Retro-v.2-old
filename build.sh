@@ -127,16 +127,18 @@ if [[ "${SKIP_CHROOT}" -eq 0 ]]; then
     mkdir -p "${CHROOT_DIR}/tmp/retro-build"
     cp -L "${SELF_DIR}/config.env" "${CHROOT_DIR}/tmp/retro-build/config.env" 2>/dev/null || true
     
-    # scripts ഫോൾഡറിലുള്ളതും പുറത്തുള്ളതുമായ setup_calamares.sh കണ്ടെത്തുന്നു
+    # scripts ഫോൾഡറിൽ ഉള്ളവയും, റൂട്ടിൽ കിടക്കുന്ന setup_calamares.sh ഉം chroot-ലേക്ക് നിർബന്ധമായും കോപ്പി ചെയ്യുന്നു
     cp "${SCRIPTS_DIR}"/*.sh "${CHROOT_DIR}/tmp/retro-build/" 2>/dev/null || true
-    if [ -f "${SELF_DIR}/setup_calamares.sh" ]; then
-        cp "${SELF_DIR}/setup_calamares.sh" "${CHROOT_DIR}/tmp/retro-build/"
-    fi
+    find "${SELF_DIR}" -name "setup_calamares.sh" -exec cp {} "${CHROOT_DIR}/tmp/retro-build/" \; 2>/dev/null || true
     chmod -R 755 "${CHROOT_DIR}/tmp/retro-build"
 
     for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
-        retro_info "Running ${step} in chroot"
-        chroot "${CHROOT_DIR}" /bin/bash "/tmp/retro-build/${step}"
+        if [ -f "${CHROOT_DIR}/tmp/retro-build/${step}" ]; then
+            retro_info "Running ${step} in chroot"
+            chroot "${CHROOT_DIR}" /bin/bash "/tmp/retro-build/${step}"
+        else
+            retro_warn "Script ${step} not found in chroot, skipping"
+        fi
     done
 
     # -------------------------------------------------------------------
