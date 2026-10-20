@@ -130,9 +130,14 @@ if [[ "${SKIP_CHROOT}" -eq 0 ]]; then
     cp "${SCRIPTS_DIR}"/*.sh "${CHROOT_DIR}/tmp/retro-build/"
     chmod -R 777 "${CHROOT_DIR}/tmp/retro-build"
 
-    for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
-        retro_info "Running ${step} in chroot"
-        chroot "${CHROOT_DIR}" /bin/bash -c "cd /tmp/retro-build && source /tmp/retro-build/config.env && ./${step}"
+   for step in 01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh setup_calamares.sh; do
+      retro_info "Running ${step} in chroot"
+      chroot "${CHROOT_DIR}" /usr/bin/env -i \
+          HOME=/root \
+          TERM="${TERM:-xterm}" \
+          PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+          DEBIAN_FRONTEND=noninteractive \
+          /bin/bash -c "cd /tmp/retro-build && unset RETRO_CONFIG_LOADED && source ./config.env && /bin/bash ./${step}"
     done
 
     # -------------------------------------------------------------------
