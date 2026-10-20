@@ -51,6 +51,7 @@ apt-get install -y --no-install-recommends \
     openbox \
     obconf \
     tint2 \
+    jgmenu \
     pcmanfm \
     feh \
     picom \
@@ -87,12 +88,23 @@ install -d -m 755 "${OB_SKEL}"
 cat > "${OB_SKEL}/autostart" <<'EOF'
 #!/usr/bin/env bash
 # Retro OS v2.0 — Openbox autostart
-nitrogen --restore >/dev/null 2>&1 &
-feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png >/dev/null 2>&1 &
+
+# 1. Wallpaper check: ഫയൽ ഉണ്ടെങ്കിൽ feh, ഇല്ലെങ്കിൽ സോളിഡ് ഡാർക്ക് ബാക്ക്ഗ്രൗണ്ട്
+if [ -f /usr/share/backgrounds/retro-os/wallpaper.png ]; then
+    feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png &
+else
+    xsetroot -solid "#0C0D12" &
+fi
+
+# 2. Desktop icons & Compositor
 picom --config /etc/skel/.config/picom.conf -b >/dev/null 2>&1 &
-pcmanfm --desktop --profile retro >/dev/null 2>&1 &
+pcmanfm --desktop >/dev/null 2>&1 &
+
+# 3. Top Panel & Network Applet
 tint2 >/dev/null 2>&1 &
 nm-applet >/dev/null 2>&1 &
+
+# 4. System health check
 /usr/local/bin/retro doctor --silent >/dev/null 2>&1 &
 EOF
 chmod 755 "${OB_SKEL}/autostart"
@@ -251,6 +263,21 @@ if is_command convert; then
 else
     printf '' > /usr/share/backgrounds/retro-os/wallpaper.png
 fi
+
+# Jgmenu config: ഓട്ടോമാറ്റിക് ആപ്പ് കാറ്റഗറികൾ കിട്ടാൻ
+install -d -m 755 /etc/skel/.config/jgmenu
+cat > /etc/skel/.config/jgmenu/jgmenurc <<EOF
+stay_alive = 0
+tint2_look = 1
+csv_cmd = pmenu
+color_menu_bg = #0C0D12 95
+color_sel_bg = #00FF9C 80
+font = DejaVu Sans Mono 9
+icon_theme = Papirus-Dark
+EOF
+
+# Right-click ചെയ്യുമ്പോൾ ഓട്ടോ മെനു വരാൻ
+sed -i 's|<menu>root-menu</menu>|<action name="Execute"><command>jgmenu_run</command></action>|g' "${OB_SKEL}/rc.xml"
 
 # -----------------------------------------------------------------------------
 # LightDM: instant automatic login into Openbox, no greeter delay
