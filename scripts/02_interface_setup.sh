@@ -85,40 +85,68 @@ apt-get install -y --no-install-recommends \
     unzip \
     mousepad \
     scrot \
-    galculator
+    galculator \
+    net-tools \
+    iproute2 \
+    dnsutils \
+    curl \
+    wget \
+    sudo \
+    menu \
+    menu-xdg
+
+# -----------------------------------------------------------------------------
+# 1. PATH Configuration (ifconfig പോലുള്ള കമാൻഡുകൾ റൺ ചെയ്യാൻ)
+# -----------------------------------------------------------------------------
+cat >> /etc/environment <<'EOF'
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EOF
+
+cat >> /etc/skel/.bashrc <<'EOF'
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+EOF
 
 # -----------------------------------------------------------------------------
 # Openbox: system-wide default config (copied into each new user via /etc/skel)
 # -----------------------------------------------------------------------------
 retro_info "[02] Writing Openbox config (rc.xml, menu.xml, autostart)"
 
-OB_SKEL="/etc/skel/.config/openbox"
-install -d -m 755 "${OB_SKEL}"
+# /etc/skel ലേക്കും നിലവിലെ ലൈവ് യൂസറുടെ ഡയറക്ടറിയിലേക്കും ഒരേപോലെ റൈറ്റ് ചെയ്യുന്നു
+for TARGET_DIR in "/etc/skel" "/home/${RETRO_USER:-retro}"; do
+    install -d -m 755 "${TARGET_DIR}/.config/openbox"
+    install -d -m 755 "${TARGET_DIR}/.config/tint2"
+    install -d -m 755 "${TARGET_DIR}/.config/jgmenu"
 
-cat > "${OB_SKEL}/autostart" <<'EOF'
+    cat > "${TARGET_DIR}/.config/openbox/autostart" <<'EOF'
 #!/usr/bin/env bash
 
-# 1. റൂട്ട് പെർമിഷൻ ഏജന്റ് (None active എറർ ഒഴിവാക്കാൻ നിർബന്ധം)
+# Xorg ഡിസ്‌പ്ലേ പൂർണ്ണമായി സെറ്റാകാൻ ചെറിയൊരു ഇടവേള
+sleep 1
+
+# 1. റൂട്ട് പെർമിഷൻ ഏജന്റ്
 lxpolkit &
 
 # 2. വാൾപേപ്പർ ലോഡ് ചെയ്യുന്നു
 if [ -f /usr/share/backgrounds/retro-os/wallpaper.png ]; then
     feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png &
+elif [ -f /usr/share/images/desktop-base/default ]; then
+    feh --bg-fill /usr/share/images/desktop-base/default &
 else
-    xsetroot -solid "#0C0D12" &
+    xsetroot -solid "#1a1b26" &
 fi
 
-# 3. ഡിസ്‌പ്ലേ കംപോസിറ്റർ (VM/Limbo & Low-end GPU Safe)
+# 3. ഡിസ്‌പ്ലേ കംപോസിറ്റർ (VM & Low-end Safe)
 picom --backend xrender -b >/dev/null 2>&1 &
 
-# 4. ഡെസ്‌ക്ടോപ്പും പാനലും നെറ്റ്‌വർക്ക് മാനേജരും
+# 4. ഡെസ്‌ക്ടോപ്പ് ഐക്കണുകൾ, Tint2 പാനൽ, വൈഫൈ, വോളിയം
 pcmanfm --desktop >/dev/null 2>&1 &
 tint2 >/dev/null 2>&1 &
 nm-applet >/dev/null 2>&1 &
 volumeicon >/dev/null 2>&1 &
 EOF
 
-chmod +x "${OB_SKEL}/autostart"
+    chmod +x "${TARGET_DIR}/.config/openbox/autostart"
+done
 
 cat > "${OB_SKEL}/menu.xml" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -206,6 +234,11 @@ panel_background_id = 1
 rounded = 0
 background_color = ${RETRO_BG_COLOR} 92
 
+# Launcher / Application Menu Button
+button = new
+button_icon = start-here
+button_lclick_command = jgmenu_run
+
 taskbar_mode = single_desktop
 task_text = 1
 task_font = ${RETRO_FONT_NAME} 9
@@ -276,30 +309,37 @@ else
     printf '' > /usr/share/backgrounds/retro-os/wallpaper.png
 fi
 
-# Jgmenu config: ഓട്ടോമാറ്റിക് ആപ്പ് കാറ്റഗറികൾ കിട്ടാൻ
-JGMENU_SKEL="/etc/skel/.config/jgmenu"
-install -d -m 755 "${JGMENU_SKEL}"
+# -----------------------------------------------------------------------------
+# Jgmenu Configuration: Kali-Style Auto Application Menu
+# -----------------------------------------------------------------------------
+for TARGET_DIR in "/etc/skel" "/home/${RETRO_USER:-live}"; do
+    install -d -m 755 "${TARGET_DIR}/.config/jgmenu"
 
-cat > "${JGMENU_SKEL}/jgmenurc" <<'EOF'
+    cat > "${TARGET_DIR}/.config/jgmenu/jgmenurc" <<'EOF'
 tint2_look          = 1
 terminal_exec       = xfce4-terminal
 terminal_args       = -e
-menu_width          = 250
+menu_width          = 260
 menu_radius         = 6
 menu_border         = 1
-item_height         = 30
-item_icon_size      = 24
+item_height         = 32
+item_icon_size      = 22
 icon_theme          = Papirus-Dark
 color_menu_bg       = #0C0D12 95
 color_norm_fg       = #D3D7CF 100
 color_sel_bg        = #00FF9C 25
 color_sel_fg        = #00FF9C 100
 csv_name_format     = %n
-csv_cmd             = pmenu
+csv_cmd             = apps
+stay_alive          = 0
 EOF
 
-# Right-click ചെയ്യുമ്പോൾ ഓട്ടോ മെനു വരാൻ
-sed -i 's|<menu>root-menu</menu>|<action name="Execute"><command>jgmenu_run</command></action>|g' "${OB_SKEL}/rc.xml"
+    # പെർമിഷൻ കൃത്യമാക്കുന്നു
+    chmod -R 755 "${TARGET_DIR}/.config/jgmenu"
+done
+
+# ഡെസ്ക്ടോപ്പ് ആപ്പുകളുടെ ലിസ്റ്റ് സിസ്റ്റം വൈഡായി പുതുക്കുന്നു
+update-desktop-database /usr/share/applications || true
 
 # -----------------------------------------------------------------------------
 # LightDM: instant automatic login into Openbox, no greeter delay
