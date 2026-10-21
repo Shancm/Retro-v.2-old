@@ -64,26 +64,24 @@ jobs:
           ./build.sh --bootstrap-host --clean
         env:
           BUILD_ROOT: ${{ github.workspace }}/build
-
+          
       - name: Verify artifact
         run: |
-          set -Eeuo pipefail
-          ls -lh build/out/
-          cd build/out
-          sha256sum -c ./*.sha256
+            set -Eeuo pipefail
+            ls -lh build/out/
+            sha256sum -c build/out/*.sha256
 
-            - name: Release and Upload ISO
-              uses: softprops/action-gh-release@v2
-              if: success()
-              with:
-                tag_name: "v2.0-build-${{ github.run_number }}"
-                name: "Retro OS v2.0 (Build #${{ github.run_number }})"
-                body: "Automated build of Retro OS v2.0 ISO and checksums."
-                files: |
-                  build/out/*.iso
-                  build/out/*.sha256
-             env:
-               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release and Upload ISO
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: "v2.0-build-${{ github.run_number }}"
+          name: "Retro OS v2.0 (Build #${{ github.run_number }})"
+          body: "Automated build of Retro OS v2.0 ISO and checksums."
+          files: |
+            build/out/*.iso
+            build/out/*.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload build log
         if: always()
