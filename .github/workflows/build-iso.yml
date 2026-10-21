@@ -89,7 +89,7 @@ jobs:
           name: retro-os-v2-build-log
           path: |
             build/chroot/var/log/retro-os/*.log
-          retention-days: 7
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Summary
