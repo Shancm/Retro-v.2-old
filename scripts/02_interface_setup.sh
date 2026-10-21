@@ -57,8 +57,9 @@ apt-get install -y --no-install-recommends \
     picom \
     lightdm \
     lightdm-gtk-greeter \
-    policykit-1 \
-    polkitd \
+    policykit-1-gnome \
+    lxpolkit \
+    xdg-utils \
     gvfs \
     gvfs-backends \
     xterm \
@@ -66,14 +67,22 @@ apt-get install -y --no-install-recommends \
     xfce4-terminal \
     fonts-dejavu \
     fonts-noto-color-emoji \
+    desktop-file-utils \
+    hicolor-icon-theme \
     papirus-icon-theme \
     arc-theme \
     lxappearance \
-    network-manager-gnome \
-    pavucontrol \
+    vlc \
     pulseaudio \
+    pavucontrol \
+    volumeicon-alsa \
+    firefox-esr \
+    network-manager-gnome \
+    udisks2 \
     pulseaudio-utils \
     xarchiver \
+    zip \
+    unzip \
     mousepad \
     scrot \
     galculator
@@ -88,27 +97,28 @@ install -d -m 755 "${OB_SKEL}"
 
 cat > "${OB_SKEL}/autostart" <<'EOF'
 #!/usr/bin/env bash
-# Retro OS v2.0 — Openbox autostart
 
-# 1. Wallpaper check: ഫയൽ ഉണ്ടെങ്കിൽ feh, ഇല്ലെങ്കിൽ സോളിഡ് ഡാർക്ക് ബാക്ക്ഗ്രൗണ്ട്
+# 1. റൂട്ട് പെർമിഷൻ ഏജന്റ് (None active എറർ ഒഴിവാക്കാൻ നിർബന്ധം)
+lxpolkit &
+
+# 2. വാൾപേപ്പർ ലോഡ് ചെയ്യുന്നു
 if [ -f /usr/share/backgrounds/retro-os/wallpaper.png ]; then
     feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png &
 else
     xsetroot -solid "#0C0D12" &
 fi
 
-# 2. Desktop icons & Compositor
+# 3. ഡിസ്‌പ്ലേ കംപോസിറ്റർ (VM/Limbo & Low-end GPU Safe)
 picom --backend xrender -b >/dev/null 2>&1 &
-pcmanfm --desktop >/dev/null 2>&1 &
 
-# 3. Top Panel & Network Applet
+# 4. ഡെസ്‌ക്ടോപ്പും പാനലും നെറ്റ്‌വർക്ക് മാനേജരും
+pcmanfm --desktop >/dev/null 2>&1 &
 tint2 >/dev/null 2>&1 &
 nm-applet >/dev/null 2>&1 &
-
-# 4. System health check
-/usr/local/bin/retro doctor --silent >/dev/null 2>&1 &
+volumeicon >/dev/null 2>&1 &
 EOF
-chmod 755 "${OB_SKEL}/autostart"
+
+chmod +x "${OB_SKEL}/autostart"
 
 cat > "${OB_SKEL}/menu.xml" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -267,15 +277,25 @@ else
 fi
 
 # Jgmenu config: ഓട്ടോമാറ്റിക് ആപ്പ് കാറ്റഗറികൾ കിട്ടാൻ
-install -d -m 755 /etc/skel/.config/jgmenu
-cat > /etc/skel/.config/jgmenu/jgmenurc <<EOF
-stay_alive = 0
-tint2_look = 1
-csv_cmd = pmenu
-color_menu_bg = #0C0D12 95
-color_sel_bg = #00FF9C 80
-font = DejaVu Sans Mono 9
-icon_theme = Papirus-Dark
+JGMENU_SKEL="/etc/skel/.config/jgmenu"
+install -d -m 755 "${JGMENU_SKEL}"
+
+cat > "${JGMENU_SKEL}/jgmenurc" <<'EOF'
+tint2_look          = 1
+terminal_exec       = xfce4-terminal
+terminal_args       = -e
+menu_width          = 250
+menu_radius         = 6
+menu_border         = 1
+item_height         = 30
+item_icon_size      = 24
+icon_theme          = Papirus-Dark
+color_menu_bg       = #0C0D12 95
+color_norm_fg       = #D3D7CF 100
+color_sel_bg        = #00FF9C 25
+color_sel_fg        = #00FF9C 100
+csv_name_format     = %n
+csv_cmd             = pmenu
 EOF
 
 # Right-click ചെയ്യുമ്പോൾ ഓട്ടോ മെനു വരാൻ
@@ -361,6 +381,14 @@ BackgroundMode=TERMINAL_BACKGROUND_IMAGE
 BackgroundImageFile=/usr/share/backgrounds/retro-os/terminal-bg.png
 BackgroundDarkness=0.85
 EOF
+
+# ഡെസ്ക്ടോപ്പ് ഡാറ്റാബേസും ഐക്കൺ കാഷെയും അപ്ഡേറ്റ് ചെയ്യുന്നു
+update-desktop-database -q || true
+gtk-update-icon-cache -f -t /usr/share/icons/Papirus-Dark || true
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+
+# skel പെർമിഷൻ കൃത്യമാക്കുന്നു
+chmod -R 755 /etc/skel
 
 retro_info "[02] Enabling display manager + NetworkManager services"
 systemctl enable lightdm.service
