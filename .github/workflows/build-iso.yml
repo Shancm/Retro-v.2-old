@@ -69,7 +69,7 @@ jobs:
         run: |
             set -Eeuo pipefail
             ls -lh build/out/
-            sha256sum -c build/out/*.sha256
+            (cd build/out && sha256sum -c ./*.sha256)
 
       - name: Release and Upload ISO
         uses: softprops/action-gh-release@v2
