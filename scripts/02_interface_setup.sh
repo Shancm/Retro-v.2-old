@@ -39,6 +39,13 @@ RETRO_LOG_DIR="/var/log/retro-os"
 RETRO_STATE_DIR="/var/lib/retro-os"
 RETRO_BIN_DIR="/usr/local/bin"
 
+# Dagitoy ti inayonmo ditoy:
+RETRO_FONT_NAME="DejaVu Sans"
+RETRO_BG_COLOR="#0C0D12"
+RETRO_FG_COLOR="#D3D7CF"
+RETRO_ACCENT_COLOR="#00FF9C"
+RETRO_ICON_THEME="Papirus-Dark"
+
 retro_info "[01] Configuring apt sources (${DEBIAN_SUITE}: ${DEBIAN_COMPONENTS})"
 
 retro_info "[02] Installing Xorg + Openbox desktop stack"
