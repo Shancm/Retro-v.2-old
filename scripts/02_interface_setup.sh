@@ -112,6 +112,7 @@ EOF
 retro_info "[02] Writing Openbox config (rc.xml, menu.xml, autostart)"
 
 # /etc/skel ലേക്കും നിലവിലെ ലൈവ് യൂസറുടെ ഡയറക്ടറിയിലേക്കും ഒരേപോലെ റൈറ്റ് ചെയ്യുന്നു
+OB_SKEL="/etc/skel/.config/openbox"
 for TARGET_DIR in "/etc/skel" "/home/${RETRO_USER:-retro}"; do
     install -d -m 755 "${TARGET_DIR}/.config/openbox"
     install -d -m 755 "${TARGET_DIR}/.config/tint2"
