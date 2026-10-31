@@ -27,6 +27,11 @@ jobs:
     name: Build hybrid BIOS/UEFI ISO
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    
+    # റിലീസ് അപ്‌ലോഡ് ചെയ്യാൻ ഈ പെർമിഷൻ നിർബന്ധമാണ്
+    permissions:
+      contents: write
+
     container:
       image: debian:bookworm
       options: --privileged
@@ -36,7 +41,7 @@ jobs:
         shell: bash
         
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install host build dependencies
@@ -48,16 +53,18 @@ jobs:
             debootstrap squashfs-tools xorriso isolinux syslinux-common \
             syslinux-utils grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed \
             mtools dosfstools zstd ca-certificates sudo binutils \
-            git curl wget
+            git curl wget python3
 
       - name: Override Debian suite (manual dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           sed -i "s/^export DEBIAN_SUITE=.*/export DEBIAN_SUITE=\"${{ inputs.debian_suite }}\"/" config.env
 
-      - name: Make scripts executable
+      - name: Make scripts and overlays executable
         run: |
-          chmod +x build.sh scripts/*.sh overlay/usr/local/bin/retro
+          chmod +x build.sh scripts/*.sh
+          [ -f overlay/usr/local/bin/retro ] && chmod +x overlay/usr/local/bin/retro
+          [ -f overlay/opt/retro-ai/retro_ai.py ] && chmod +x overlay/opt/retro-ai/retro_ai.py || true
 
       - name: Run Retro OS build
         run: |
@@ -67,9 +74,9 @@ jobs:
           
       - name: Verify artifact
         run: |
-            set -Eeuo pipefail
-            ls -lh build/out/
-            (cd build/out && sha256sum -c ./*.sha256)
+          set -Eeuo pipefail
+          ls -lh build/out/
+          (cd build/out && sha256sum -c ./*.sha256)
 
       - name: Release and Upload ISO
         uses: softprops/action-gh-release@v2
@@ -77,20 +84,21 @@ jobs:
         with:
           tag_name: "v2.0-build-${{ github.run_number }}"
           name: "Retro OS v2.0 (Build #${{ github.run_number }})"
-          body: "Automated build of Retro OS v2.0 ISO and checksums."
+          body: "Automated production build of Retro OS v2.0 Hybrid ISO with SHA-256 checksums."
           files: |
             build/out/*.iso
             build/out/*.sha256
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload build log
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: retro-os-v2-build-log
+          name: retro-os-v2-build-logs
           path: |
+            build/logs/*.log
             build/chroot/var/log/retro-os/*.log
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: ignore
 
       - name: Summary
@@ -111,6 +119,6 @@ jobs:
               cat build/out/*.sha256
               echo '```'
             else
-              echo "❌ Build failed — see job logs and the retro-os-v2-build-log artifact"
+              echo "❌ Build failed — inspect the action log or download the build-logs artifact"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
