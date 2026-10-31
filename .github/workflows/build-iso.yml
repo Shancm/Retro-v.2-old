@@ -68,7 +68,7 @@ jobs:
 
       - name: Run Retro OS build
         run: |
-          ./build.sh --bootstrap-host --clean
+          ./build.sh --clean
         env:
           BUILD_ROOT: ${{ github.workspace }}/build
           
