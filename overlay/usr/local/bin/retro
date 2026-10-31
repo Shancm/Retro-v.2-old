@@ -1,142 +1,736 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Retro OS v2.0 — /usr/local/bin/retro
-# System control wrapper: doctor, bujji, ghost, kali, info.
+# retro - Retro OS master orchestrator CLI
+#
+#   retro term | mon | boost | share <file> | fetch | update | doctor | panic
+#   retro ai [shell|doctor|watch|status|say] | profile | menu | help | --version
+#
+# Installed as /usr/local/bin/retro (overlay). Pure bash + coreutils; the only
+# optional dependencies are qrencode (share), btop/htop (mon), snapper (doctor).
 # =============================================================================
 set -Eeuo pipefail
 
-RETRO_ETC_DIR="/etc/retro-os"
-RETRO_AI_DIR="/opt/retro-ai"
-RETRO_LOG_DIR="/var/log/retro-os"
-LOG_FILE="${RETRO_LOG_DIR}/retro-cli.log"
+readonly RETRO_CLI_VERSION="2.0"
+readonly RELEASE_FILE="/etc/retro-os/release"
+readonly CONF_FILE="/etc/retro-os/retro.conf"
+readonly PROFILE_ENV="/run/retro-os/profile.env"
+readonly HELPER_DIR="/opt/retro-os/bin"
+readonly AI_SCRIPT="/opt/retro-ai/retro_ai.py"
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly SELF
+ORIG_ARGS=()
 
-C_RESET='\033[0m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'
-C_YELLOW='\033[0;33m'; C_CYAN='\033[0;36m'; C_BOLD='\033[1m'
+RETRO_OS_NAME="Retro OS"
+RETRO_OS_VERSION="2.0"
+RETRO_OS_EDITION="Tactical"
+RETRO_FOUNDER="Shan CM"
+RETRO_BASE=""
+RETRO_UPDATE_URL=""
 
-log() {
-    mkdir -p "${RETRO_LOG_DIR}" 2>/dev/null || true
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${LOG_FILE}" 2>/dev/null || true
-}
-
-die() { echo -e "${C_RED}[x]${C_RESET} $*" >&2; exit 1; }
-
-usage() {
-    cat <<EOF
-${C_BOLD}retro${C_RESET} — Retro OS v2.0 control wrapper
-
-Usage: retro <command> [options]
-
-Commands:
-  doctor [--silent]   System health check (RAM/disk/services) via Bujji AI
-  bujji               Open the interactive Bujji AI companion shell
-  info                Print OS release info
-  ghost               Toggle anonymity mode (MAC spoof + nftables lockdown)
-  ghost status        Show current ghost-mode state
-  ghost off           Disable ghost mode, restore normal networking
-  kali                Enter (or create) the rootless 'retro-kali' toolbox
-  help                Show this message
-EOF
-}
-
-cmd_info() {
-    [[ -f "${RETRO_ETC_DIR}/release" ]] || die "release file missing"
-    # shellcheck source=/dev/null
-    source "${RETRO_ETC_DIR}/release"
-    echo "${RETRO_OS_NAME} ${RETRO_OS_VERSION} \"${RETRO_OS_EDITION}\" (${RETRO_OS_CODENAME})"
-    echo "Base: Debian ${DEBIAN_SUITE}"
-    echo "Built: ${BUILD_DATE}"
-}
-
-cmd_doctor() {
-    exec python3 "${RETRO_AI_DIR}/bujji.py" doctor "$@"
-}
-
-cmd_bujji() {
-    exec python3 "${RETRO_AI_DIR}/bujji.py" chat
-}
+# shellcheck source=/dev/null
+[[ -r "${RELEASE_FILE}" ]] && source "${RELEASE_FILE}"
+# shellcheck source=/dev/null
+[[ -r "${CONF_FILE}" ]] && source "${CONF_FILE}"
 
 # -----------------------------------------------------------------------------
-# Ghost mode: on-demand anonymity. Only touches the network when explicitly
-# invoked — never runs automatically at boot.
+# Presentation
 # -----------------------------------------------------------------------------
-GHOST_STATE_FILE="/var/lib/retro-os/ghost.state"
-
-ghost_default_iface() {
-    ip -o -4 route show to default 2>/dev/null | awk '{print $5; exit}'
-}
-
-cmd_ghost() {
-    local sub="${1:-toggle}"
-    case "${sub}" in
-        status)
-            if [[ -f "${GHOST_STATE_FILE}" ]]; then
-                echo -e "${C_GREEN}[+]${C_RESET} Ghost mode: ACTIVE (since $(cat "${GHOST_STATE_FILE}"))"
-            else
-                echo -e "${C_YELLOW}[!]${C_RESET} Ghost mode: inactive"
-            fi
-            ;;
-        off)
-            [[ "${EUID}" -eq 0 ]] || die "ghost off requires root (sudo retro ghost off)"
-            local iface; iface="$(ghost_default_iface)"
-            if [[ -n "${iface}" ]]; then
-                macchanger -p "${iface}" >/dev/null 2>&1 || true
-            fi
-            nft flush ruleset 2>/dev/null || true
-            systemctl stop tor >/dev/null 2>&1 || true
-            rm -f "${GHOST_STATE_FILE}"
-            echo -e "${C_GREEN}[+]${C_RESET} Ghost mode disabled, networking restored."
-            log "ghost mode disabled"
-            ;;
-        toggle|on)
-            [[ "${EUID}" -eq 0 ]] || die "ghost mode requires root (sudo retro ghost)"
-            local iface; iface="$(ghost_default_iface)"
-            [[ -n "${iface}" ]] || die "could not determine default network interface"
-            echo -e "${C_CYAN}[*]${C_RESET} Randomizing MAC on ${iface}..."
-            macchanger -r "${iface}" >/dev/null 2>&1 || echo -e "${C_YELLOW}[!]${C_RESET} macchanger failed (interface may be managed by NetworkManager)"
-            echo -e "${C_CYAN}[*]${C_RESET} Applying nftables DNS-leak lockdown..."
-            nft -f - <<'NFT' 2>/dev/null || echo -e "${C_YELLOW}[!]${C_RESET} nftables rule load failed"
-table inet retro_ghost {
-  chain output {
-    type filter hook output priority 0;
-    udp dport 53 ip daddr != { 127.0.0.1, ::1 } drop
-    tcp dport 53 ip daddr != { 127.0.0.1, ::1 } drop
-  }
-}
-NFT
-            if systemctl list-unit-files tor.service >/dev/null 2>&1; then
-                systemctl start tor >/dev/null 2>&1 || echo -e "${C_YELLOW}[!]${C_RESET} tor not installed/available"
-            fi
-            date '+%Y-%m-%d %H:%M:%S' > "${GHOST_STATE_FILE}"
-            echo -e "${C_GREEN}[+]${C_RESET} Ghost mode active."
-            log "ghost mode enabled on ${iface}"
-            ;;
-        *)
-            die "unknown ghost subcommand: ${sub}"
-            ;;
+MINT="" CRIM="" CYAN="" DIM="" BOLD="" RST="" DOT="*"
+init_colors() {
+    if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+        local ncolors
+        ncolors="$(tput colors 2>/dev/null || echo 8)"
+        if (( ncolors >= 256 )); then
+            MINT=$'\e[38;5;48m'; CRIM=$'\e[38;5;197m'; CYAN=$'\e[38;5;81m'; DIM=$'\e[38;5;244m'
+        else
+            MINT=$'\e[32m'; CRIM=$'\e[31m'; CYAN=$'\e[36m'; DIM=$'\e[2m'
+        fi
+        BOLD=$'\e[1m'; RST=$'\e[0m'
+    fi
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+        *UTF-8*|*utf8*|*UTF8*) DOT="●" ;;
     esac
 }
 
-cmd_kali() {
-    if ! command -v distrobox >/dev/null 2>&1; then
-        die "distrobox not installed. Install it first: sudo apt install distrobox podman"
-    fi
-    if ! distrobox list 2>/dev/null | grep -q 'retro-kali'; then
-        echo -e "${C_CYAN}[*]${C_RESET} Creating rootless 'retro-kali' container (first run only)..."
-        distrobox create --name retro-kali --image kalilinux/kali-rolling --yes
-    fi
-    exec distrobox enter retro-kali
+say()  { printf '%s[*]%s %s\n' "${CYAN}" "${RST}" "$*"; }
+ok()   { printf '%s[+]%s %s\n' "${MINT}" "${RST}" "$*"; }
+warn() { printf '%s[!]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; }
+die()  { printf '%s[x]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; exit 1; }
+
+banner_art() {
+    cat <<'EOF'
+ ____   _____  _____  ____    ___       ___   ____
+|  _ \ | ____||_   _||  _ \  / _ \     / _ \ / ___|
+| |_) ||  _|    | |  | |_) || | | |   | | | |\___ \
+|  _ < | |___   | |  |  _ < | |_| |   | |_| | ___) |
+|_| \_\|_____|  |_|  |_| \_\ \___/     \___/ |____/
+EOF
 }
 
+load_profile() {
+    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_PICOM="?" RETRO_ZRAM_STATE="?"
+    # shellcheck source=/dev/null
+    [[ -r "${PROFILE_ENV}" ]] && source "${PROFILE_ENV}"
+    return 0
+}
+
+indicator() {   # <label> <state: good|bad|idle> <text>
+    local color="${DIM}"
+    case "$2" in good) color="${MINT}" ;; bad) color="${CRIM}" ;; esac
+    printf '%s%s%s %s%s%s: %s   ' "${color}" "${DOT}" "${RST}" "${DIM}" "$1" "${RST}" "$3"
+}
+
+status_bar() {
+    load_profile
+    local net="offline" net_state="bad"
+    if ip route show default 2>/dev/null | grep -q .; then net="online"; net_state="good"; fi
+
+    local ai_state="idle" ai_text="stopped"
+    if systemctl is-active --quiet retro-ai-watchdog.service 2>/dev/null; then ai_state="good"; ai_text="watching"; fi
+
+    local zr_state="idle" zr_text="off"
+    if grep -q '^/dev/zram' /proc/swaps 2>/dev/null; then zr_state="good"; zr_text="${RETRO_ZRAM_PCT:-?}% zstd"; fi
+
+    local comp_state="idle" comp_text="off"
+    if pgrep -x picom >/dev/null 2>&1; then comp_state="good"; comp_text="picom"; fi
+
+    local tier_state="good"
+    [[ "${RETRO_TIER}" == "low" ]] && tier_state="bad"
+
+    printf '  '
+    indicator "tier" "${tier_state}" "${RETRO_TIER} (${RETRO_RAM_MB}MB/${RETRO_CPUS}c)"
+    indicator "zram" "${zr_state}" "${zr_text}"
+    indicator "compositor" "${comp_state}" "${comp_text}"
+    printf '\n  '
+    indicator "network" "${net_state}" "${net}"
+    indicator "retro-ai" "${ai_state}" "${ai_text}"
+    printf '\n'
+}
+
+print_banner() {
+    printf '%s%s' "${MINT}" "${BOLD}"
+    banner_art
+    printf '%s\n' "${RST}"
+    printf '  %s%s v%s%s %s(%s)%s   %s|%s   Founder: %s%s%s\n' \
+        "${BOLD}" "${RETRO_OS_NAME}" "${RETRO_OS_VERSION}" "${RST}" \
+        "${DIM}" "${RETRO_OS_EDITION}" "${RST}" "${DIM}" "${RST}" "${MINT}" "${RETRO_FOUNDER}" "${RST}"
+    printf '\n'
+    status_bar
+    printf '\n'
+}
+
+usage() {
+    cat <<EOF
+${BOLD}Usage:${RST} retro <command> [options]
+
+${MINT}Session${RST}
+  term                 open the primary terminal (xfce4-terminal)
+  mon                  system monitor (btop, falls back to htop)
+  fetch                ASCII system summary (OS, kernel, uptime, RAM, CPU)
+  profile              show the adaptive hardware profile in effect
+
+${MINT}Performance${RST}
+  boost                stop Picom + idle daemons, drop caches, recover RAM now
+
+${MINT}Utilities${RST}
+  share <file> [--port N] [--once] [--ascii] [--bind IP]
+                       serve one file over HTTP and show a QR code for your phone
+  ai [shell|doctor|watch|status|say]
+                       Retro AI offline companion / health audit / watchdog
+  menu                 regenerate the Openbox + Start menus for your user
+
+${MINT}Maintenance${RST}
+  update [--tools] [--no-apt] [--force]
+                       refresh apt lists/keys, upgrade, sync local scripts, rebuild menus
+  doctor               repair dpkg/apt, prune snapshots, run TRIM, vacuum logs
+  panic [--restore]    EMERGENCY: cut all networking and lock the session
+
+  --version            print the CLI version
+EOF
+}
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+need_root() {
+    if [[ "${EUID}" -ne 0 ]]; then
+        command -v sudo >/dev/null 2>&1 || die "this command needs root and sudo is not installed"
+        exec sudo -E -- "${SELF}" "${ORIG_ARGS[@]}"
+    fi
+}
+
+mem_available_mb() { awk '/^MemAvailable:/ {printf "%d", $2/1024}' /proc/meminfo; }
+
+is_live() { grep -qw 'boot=live' /proc/cmdline 2>/dev/null; }
+
+target_user() {
+    local u="${SUDO_USER:-}"
+    if [[ -z "${u}" || "${u}" == "root" ]]; then
+        u="$(getent passwd 1000 | cut -d: -f1 || true)"
+    fi
+    printf '%s' "${u}"
+}
+
+user_gui() {   # run a command as the desktop user with the GUI environment
+    local u home
+    u="$(target_user)"
+    [[ -n "${u}" ]] || return 1
+    home="$(getent passwd "${u}" | cut -d: -f6)"
+    runuser -u "${u}" -- env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-${home}/.Xauthority}" "$@"
+}
+
+start_log() {   # <name>
+    if [[ "${EUID}" -eq 0 ]]; then
+        mkdir -p /var/log/retro-os
+        exec > >(tee -a "/var/log/retro-os/$1.log") 2>&1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# term / mon
+# -----------------------------------------------------------------------------
+cmd_term() {
+    [[ -n "${DISPLAY:-}" ]] || die "no graphical session (DISPLAY is empty)"
+    command -v xfce4-terminal >/dev/null 2>&1 || die "xfce4-terminal is not installed"
+    exec xfce4-terminal "$@"
+}
+
+cmd_mon() {
+    local m
+    for m in btop htop top; do
+        if command -v "${m}" >/dev/null 2>&1; then exec "${m}" "$@"; fi
+    done
+    die "no system monitor found (btop/htop/top)"
+}
+
+# -----------------------------------------------------------------------------
+# boost
+# -----------------------------------------------------------------------------
+cmd_boost() {
+    need_root
+    start_log boost
+    print_banner
+    local before after unit
+    before="$(mem_available_mb)"
+    say "Retro Boost - available RAM before: ${before} MiB"
+
+    if pgrep -x picom >/dev/null 2>&1; then
+        pkill -x picom || true
+        ok "compositor (picom) stopped"
+        # tell tint2 to reload so it falls back to its opaque rendering
+        pkill -USR1 -x tint2 2>/dev/null || true
+    else
+        say "compositor not running"
+    fi
+
+    local -a idle_units=(
+        bluetooth.service ModemManager.service avahi-daemon.service avahi-daemon.socket
+        cups.service cups.socket cups-browsed.service packagekit.service
+    )
+    for unit in "${idle_units[@]}"; do
+        if systemctl is-active --quiet "${unit}" 2>/dev/null; then
+            if systemctl stop "${unit}" 2>/dev/null; then ok "stopped idle service ${unit}"; else warn "could not stop ${unit}"; fi
+        fi
+    done
+
+    sync
+    if [[ -w /proc/sys/vm/drop_caches ]]; then
+        echo 3 > /proc/sys/vm/drop_caches
+        ok "page cache, dentries and inodes dropped"
+    fi
+    if [[ -w /proc/sys/vm/compact_memory ]]; then
+        echo 1 > /proc/sys/vm/compact_memory || true
+        ok "memory compaction triggered"
+    fi
+
+    after="$(mem_available_mb)"
+    ok "available RAM now: ${after} MiB (recovered $(( after - before )) MiB)"
+}
+
+# -----------------------------------------------------------------------------
+# share
+# -----------------------------------------------------------------------------
+cmd_share() {
+    local file="" port=8000 once=0 ascii=0 bind="0.0.0.0"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --port)  port="${2:-}"; shift 2 ;;
+            --once)  once=1; shift ;;
+            --ascii) ascii=1; shift ;;
+            --bind)  bind="${2:-}"; shift 2 ;;
+            -h|--help) echo "usage: retro share <file> [--port N] [--once] [--ascii] [--bind IP]"; return 0 ;;
+            -*) die "unknown option: $1" ;;
+            *)  [[ -z "${file}" ]] || die "only one file can be shared"; file="$1"; shift ;;
+        esac
+    done
+    [[ -n "${file}" ]] || die "usage: retro share <file>"
+    [[ -f "${file}" && -r "${file}" ]] || die "not a readable regular file: ${file} (tip: tar -czf x.tgz <dir> first)"
+    [[ "${port}" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || die "invalid port: ${port}"
+    command -v python3 >/dev/null 2>&1 || die "python3 is required"
+    command -v qrencode >/dev/null 2>&1 || warn "qrencode not found - the URL will be shown without a QR code"
+
+    exec -a retro-share python3 - "${file}" "${port}" "${bind}" "${once}" "${ascii}" <<'PY'
+import http.server
+import mimetypes
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import urllib.parse
+
+path, port, bind, once, ascii_mode = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4] == "1", sys.argv[5] == "1"
+path = os.path.abspath(path)
+name = os.path.basename(path)
+quoted = urllib.parse.quote(name)
+
+
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))   # UDP connect: selects a route, sends nothing
+        return s.getsockname()[0]
+    except OSError:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except OSError:
+            return "127.0.0.1"
+    finally:
+        s.close()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "retro-share"
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("[retro share] %s - %s\n" % (self.address_string(), fmt % args))
+
+    def _send(self, with_body):
+        st = os.stat(path)
+        ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(st.st_size))
+        self.send_header("Content-Disposition", "attachment; filename*=UTF-8''%s" % quoted)
+        self.end_headers()
+        if with_body:
+            with open(path, "rb") as fh:
+                shutil.copyfileobj(fh, self.wfile, 64 * 1024)
+            if once:
+                sys.stderr.write("[retro share] download finished, shutting down (--once)\n")
+                threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+    def _route(self, with_body):
+        req = urllib.parse.unquote(self.path.split("?", 1)[0])
+        if req == "/":
+            self.send_response(302)
+            self.send_header("Location", "/" + quoted)
+            self.end_headers()
+        elif req == "/" + name:
+            self._send(with_body)
+        else:
+            self.send_error(404)
+
+    def do_GET(self):
+        self._route(True)
+
+    def do_HEAD(self):
+        self._route(False)
+
+
+httpd = None
+for candidate in range(port, port + 50):
+    try:
+        httpd = http.server.ThreadingHTTPServer((bind, candidate), Handler)
+        port = candidate
+        break
+    except OSError:
+        continue
+if httpd is None:
+    sys.exit("retro share: no free port in %d-%d" % (port, port + 49))
+
+host = lan_ip() if bind in ("0.0.0.0", "") else bind
+url = "http://%s:%d/%s" % (host, port, quoted)
+print("\n  Sharing : %s (%.1f MiB)" % (name, os.path.getsize(path) / 1048576))
+print("  URL     : %s" % url)
+print("  Scan the QR code with your phone (same network). Ctrl+C to stop.\n")
+try:
+    mode = "ASCII" if ascii_mode else "ANSIUTF8"
+    subprocess.run(["qrencode", "-t", mode, "-m", "2", url], check=False)
+except FileNotFoundError:
+    pass
+print("\n  WARNING: anyone on this network can download the file while this runs.\n")
+try:
+    httpd.serve_forever()
+except KeyboardInterrupt:
+    print("\n[retro share] stopped")
+finally:
+    httpd.server_close()
+PY
+}
+
+# -----------------------------------------------------------------------------
+# fetch
+# -----------------------------------------------------------------------------
+cmd_fetch() {
+    load_profile
+    local os_name kernel uptime_s ram_used ram_total cpu cores disk shell_name pkgs swap_zram
+    os_name="${RETRO_OS_NAME} ${RETRO_OS_VERSION} (${RETRO_OS_EDITION})"
+    [[ -n "${RETRO_BASE}" ]] && os_name+=" / ${RETRO_BASE}"
+    kernel="$(uname -sr)"
+    uptime_s="$(uptime -p 2>/dev/null | sed 's/^up //' || true)"
+    ram_used="$(free -m | awk '/^Mem:/ {print $3}')"
+    ram_total="$(free -m | awk '/^Mem:/ {print $2}')"
+    cpu="$(awk -F': ' '/^model name/ {print $2; exit}' /proc/cpuinfo)"
+    cores="$(nproc 2>/dev/null || echo 1)"
+    disk="$(df -h / | awk 'NR==2 {printf "%s used of %s (%s)", $3, $2, $5}')"
+    shell_name="$(basename "${SHELL:-bash}")"
+    pkgs="$(dpkg-query -f '.\n' -W 2>/dev/null | wc -l)"
+    swap_zram="$(awk '/^\/dev\/zram/ {printf "zram %d MiB", $3/1024; f=1} END {if (!f) print "none"}' /proc/swaps)"
+
+    local -a logo=(
+        "   ___________   "
+        "  /  _____    \\  "
+        " |  |  ___ )  | "
+        " |  | |___/   | "
+        " |  |  _  \\   | "
+        " |  | | \\  \\  | "
+        "  \\ |_|  \\_/ /  "
+        "   \\_________/   "
+    )
+    local -a info=(
+        "${MINT}${BOLD}${USER:-retro}@$(hostname)${RST}"
+        "${DIM}------------------------------${RST}"
+        "${MINT}OS${RST}      ${os_name}"
+        "${MINT}Kernel${RST}  ${kernel}"
+        "${MINT}Uptime${RST}  ${uptime_s:-n/a}"
+        "${MINT}CPU${RST}     ${cpu:-unknown} (${cores} cores)"
+        "${MINT}RAM${RST}     ${ram_used} MiB / ${ram_total} MiB   ${DIM}swap: ${swap_zram}${RST}"
+        "${MINT}Disk${RST}    ${disk}"
+        "${MINT}Tier${RST}    ${RETRO_TIER} ${DIM}(compositor: ${RETRO_PICOM})${RST}"
+        "${MINT}Shell${RST}   ${shell_name}   ${DIM}pkgs: ${pkgs}${RST}"
+    )
+    local i rows="${#info[@]}"
+    printf '\n'
+    for (( i = 0; i < rows; i++ )); do
+        printf '%s%s%s  %s\n' "${MINT}" "${logo[i]:-                 }" "${RST}" "${info[i]}"
+    done
+    printf '\n'
+}
+
+# -----------------------------------------------------------------------------
+# update
+# -----------------------------------------------------------------------------
+apt_update_with_repair() {
+    local out rc=0
+    out="$(apt-get update 2>&1)" || rc=$?
+    printf '%s\n' "${out}"
+    if (( rc != 0 )) || grep -qE 'NO_PUBKEY|EXPKEYSIG|is not signed|not valid yet' <<< "${out}"; then
+        warn "repository trouble detected - refreshing archive keyrings and certificates"
+        apt-get install -y --reinstall debian-archive-keyring ca-certificates || true
+        apt-get update || return 1
+    fi
+}
+
+update_scripts() {
+    if [[ -z "${RETRO_UPDATE_URL}" ]]; then
+        warn "RETRO_UPDATE_URL is empty in ${CONF_FILE} - skipping local script sync"
+        return 0
+    fi
+    local tmp stamp backup rel src
+    tmp="$(mktemp -d)"
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    backup="/var/lib/retro-os/backup/${stamp}"
+
+    say "downloading ${RETRO_UPDATE_URL}"
+    curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "${tmp}/pkg.tar.gz" "${RETRO_UPDATE_URL}" \
+        || { warn "download failed - local scripts unchanged"; rm -rf "${tmp}"; return 1; }
+
+    if curl -fsSL --connect-timeout 15 --max-time 30 -o "${tmp}/pkg.sha256" "${RETRO_UPDATE_URL}.sha256" 2>/dev/null; then
+        local want got
+        want="$(awk '{print $1; exit}' "${tmp}/pkg.sha256")"
+        got="$(sha256sum "${tmp}/pkg.tar.gz" | awk '{print $1}')"
+        [[ "${want}" == "${got}" ]] || { warn "SHA-256 mismatch - refusing to apply update"; rm -rf "${tmp}"; return 1; }
+        ok "SHA-256 verified"
+    else
+        warn "no .sha256 published next to the tarball - integrity not verified"
+    fi
+
+    if tar -tzf "${tmp}/pkg.tar.gz" | grep -qE '(^/|(^|/)\.\.(/|$))'; then
+        warn "tarball contains absolute or parent-relative paths - refusing"
+        rm -rf "${tmp}"; return 1
+    fi
+    mkdir -p "${tmp}/x"
+    tar -xzf "${tmp}/pkg.tar.gz" -C "${tmp}/x" --no-same-owner
+
+    mkdir -p "${backup}"
+    for rel in opt/retro-os opt/retro-ai usr/local/bin/retro; do
+        src="${tmp}/x/${rel}"
+        [[ -e "${src}" ]] || continue
+        if [[ -e "/${rel}" ]]; then
+            mkdir -p "${backup}/$(dirname "${rel}")"
+            cp -a "/${rel}" "${backup}/${rel}"
+        fi
+    done
+
+    # menu.d lists are user-editable: add new files, never overwrite existing ones
+    if [[ -d "${tmp}/x/opt/retro-os/menu.d" ]]; then
+        mkdir -p /opt/retro-os/menu.d
+        cp -n "${tmp}/x/opt/retro-os/menu.d/"* /opt/retro-os/menu.d/ 2>/dev/null || true
+        rm -rf "${tmp}/x/opt/retro-os/menu.d"
+    fi
+    [[ -d "${tmp}/x/opt/retro-os" ]] && cp -a --no-preserve=ownership "${tmp}/x/opt/retro-os/." /opt/retro-os/
+    [[ -d "${tmp}/x/opt/retro-ai" ]] && cp -a --no-preserve=ownership "${tmp}/x/opt/retro-ai/." /opt/retro-ai/
+    if [[ -f "${tmp}/x/usr/local/bin/retro" ]]; then
+        # atomic replace (new inode) so this running instance is not corrupted
+        install -m 0755 "${tmp}/x/usr/local/bin/retro" /usr/local/bin/.retro.new
+        mv -f /usr/local/bin/.retro.new /usr/local/bin/retro
+    fi
+    chmod 0755 /opt/retro-os/bin/* 2>/dev/null || true
+    chmod 0750 /opt/retro-os/bin/retro-live-fixup 2>/dev/null || true
+    ok "local scripts updated (previous versions saved in ${backup})"
+    rm -rf "${tmp}"
+}
+
+cmd_update() {
+    local do_apt=1 do_tools=0 force=0 arg
+    for arg in "$@"; do
+        case "${arg}" in
+            --no-apt) do_apt=0 ;;
+            --tools)  do_tools=1 ;;
+            --force)  force=1 ;;
+            -h|--help) echo "usage: retro update [--tools] [--no-apt] [--force]"; return 0 ;;
+            *) die "unknown option: ${arg}" ;;
+        esac
+    done
+    need_root
+    start_log update
+    print_banner
+
+    mkdir -p /run/lock
+    exec 9> /run/lock/retro-update.lock
+    flock -n 9 || die "another retro update is already running"
+
+    local live=0
+    is_live && live=1
+    if (( live )); then
+        local avail
+        avail="$(df -Pm / | awk 'NR==2 {print $4}')"
+        warn "live session: updates land in RAM and are lost at reboot (free: ${avail} MiB)"
+        if (( avail < 400 && force == 0 )); then
+            die "less than 400 MiB free in the live overlay - refusing (use --force, or install to disk first)"
+        fi
+    fi
+
+    if command -v snapper >/dev/null 2>&1 && [[ -e /etc/snapper/configs/root ]]; then
+        say "creating pre-update Btrfs snapshot"
+        snapper --no-dbus -c root create -d "retro update (pre)" || warn "snapshot failed"
+    fi
+
+    if (( do_apt )); then
+        say "1/5 refreshing package lists and keys"
+        apt_update_with_repair || die "apt update failed - check your network (retro doctor can repair dpkg state)"
+        apt-get install -y --only-upgrade debian-archive-keyring ca-certificates || warn "keyring refresh skipped"
+
+        say "2/5 upgrading packages"
+        local upg="full-upgrade"
+        (( live )) && upg="upgrade"   # never pull a new kernel into a live overlay
+        DEBIAN_FRONTEND=noninteractive apt-get -y \
+            -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "${upg}" \
+            || die "package upgrade failed - run: retro doctor"
+    else
+        say "1-2/5 apt steps skipped (--no-apt)"
+    fi
+
+    say "3/5 syncing local scripts"
+    update_scripts || warn "script sync did not complete"
+
+    if (( do_tools )); then
+        say "4/5 refreshing modern Go/Rust tools"
+        "${HELPER_DIR}/retro-fetch-tools" --all || warn "some tools could not be refreshed"
+    else
+        say "4/5 modern tools unchanged (use --tools to refresh RustScan/ffuf/httpx/naabu)"
+    fi
+
+    say "5/5 regenerating menus"
+    "${HELPER_DIR}/retro-menu-gen" --system
+    local tu home
+    tu="$(target_user)"
+    if [[ -n "${tu}" ]]; then
+        home="$(getent passwd "${tu}" | cut -d: -f6)"
+        runuser -u "${tu}" -- "${HELPER_DIR}/retro-menu-gen" --user "${home}" || warn "user menu regeneration failed"
+        user_gui openbox --reconfigure 2>/dev/null && ok "Openbox reconfigured" || say "Openbox not reachable (menus apply at next login)"
+    fi
+    ok "retro update finished"
+}
+
+# -----------------------------------------------------------------------------
+# doctor
+# -----------------------------------------------------------------------------
+cmd_doctor() {
+    need_root
+    start_log doctor
+    print_banner
+    local fails=0
+    run_step() {
+        local label="$1"; shift
+        say "${label}"
+        if "$@"; then ok "${label}: done"; else warn "${label}: FAILED"; fails=$(( fails + 1 )); fi
+    }
+
+    run_step "dpkg --configure -a"       dpkg --configure -a
+    run_step "apt-get -f install"        env DEBIAN_FRONTEND=noninteractive apt-get -y -f install
+    run_step "apt-get check"             apt-get check
+    run_step "apt-get clean"             apt-get clean
+
+    prune_snapshots() {
+        command -v snapper >/dev/null 2>&1 || { say "snapper not installed - nothing to prune"; return 0; }
+        local cfg any=0
+        while IFS= read -r cfg; do
+            [[ -n "${cfg}" ]] || continue
+            any=1
+            snapper --no-dbus -c "${cfg}" cleanup number || true
+            snapper --no-dbus -c "${cfg}" cleanup timeline || true
+            snapper --no-dbus -c "${cfg}" cleanup empty-pre-post || true
+        done < <(snapper --no-dbus --csvout list-configs --columns config 2>/dev/null | tail -n +2)
+        (( any )) || say "no snapper configs (not a Btrfs install) - nothing to prune"
+        return 0
+    }
+    run_step "pruning snapshots"         prune_snapshots
+
+    trim_all() {
+        command -v fstrim >/dev/null 2>&1 || return 0
+        fstrim -av || { say "TRIM not supported on these devices (normal for live/virtual disks)"; return 0; }
+    }
+    run_step "TRIM (fstrim -av)"         trim_all
+    run_step "vacuuming journal (16M)"   journalctl --vacuum-size=16M
+
+    failed_units() {
+        local n
+        n="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
+        if (( n > 0 )); then
+            systemctl --failed --no-legend --plain
+            systemctl reset-failed || true
+            warn "${n} failed unit(s) listed above were reset - inspect with: journalctl -xb -u <unit>"
+        else
+            say "no failed systemd units"
+        fi
+        return 0
+    }
+    run_step "systemd failed units"      failed_units
+
+    if [[ -r "${AI_SCRIPT}" ]]; then
+        say "Retro AI health audit"
+        python3 "${AI_SCRIPT}" doctor --brief || true
+    fi
+
+    if (( fails > 0 )); then die "retro doctor finished with ${fails} failing step(s)"; fi
+    ok "retro doctor finished cleanly"
+}
+
+# -----------------------------------------------------------------------------
+# panic
+# -----------------------------------------------------------------------------
+panic_restore() {
+    need_root
+    say "restoring networking"
+    nft delete table inet retro_panic 2>/dev/null || true
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock all || true
+    command -v nmcli >/dev/null 2>&1 && nmcli networking on || true
+    local dev
+    for dev in /sys/class/net/*; do
+        dev="$(basename "${dev}")"
+        [[ "${dev}" == "lo" ]] || ip link set "${dev}" up 2>/dev/null || true
+    done
+    rm -f /run/retro-os/panic.state
+    ok "network restored (NetworkManager will reconnect)"
+}
+
+cmd_panic() {
+    if [[ "${1:-}" == "--restore" || "${1:-}" == "-r" ]]; then panic_restore; return; fi
+    need_root
+
+    # 1. drop everything on the wire first - speed matters
+    if command -v nft >/dev/null 2>&1; then
+        nft -f - <<'EOF' || true
+table inet retro_panic {
+    chain input   { type filter hook input   priority -100; policy drop; iif "lo" accept; }
+    chain output  { type filter hook output  priority -100; policy drop; oif "lo" accept; }
+    chain forward { type filter hook forward priority -100; policy drop; }
+}
+EOF
+    fi
+    command -v rfkill >/dev/null 2>&1 && rfkill block all 2>/dev/null || true
+    command -v nmcli >/dev/null 2>&1 && nmcli networking off 2>/dev/null || true
+    local dev
+    for dev in /sys/class/net/*; do
+        dev="$(basename "${dev}")"
+        [[ "${dev}" == "lo" ]] || ip link set "${dev}" down 2>/dev/null || true
+    done
+    pkill -f retro-share 2>/dev/null || true
+
+    # 2. lock the graphical session (LightDM seat lock, then logind as backup)
+    XDG_SEAT_PATH="/org/freedesktop/DisplayManager/Seat0" dm-tool lock 2>/dev/null \
+        || loginctl lock-sessions 2>/dev/null || true
+    loginctl lock-sessions 2>/dev/null || true
+
+    mkdir -p /run/retro-os
+    date -u +%FT%TZ > /run/retro-os/panic.state
+    printf '%s%s PANIC %s network isolated + session locked. Restore with: retro panic --restore\n' "${CRIM}" "${BOLD}" "${RST}"
+}
+
+# -----------------------------------------------------------------------------
+# ai / profile / menu
+# -----------------------------------------------------------------------------
+cmd_ai() {
+    [[ -r "${AI_SCRIPT}" ]] || die "Retro AI is not installed (${AI_SCRIPT} missing)"
+    exec python3 "${AI_SCRIPT}" "$@"
+}
+
+cmd_profile() {
+    load_profile
+    printf '%sAdaptive hardware profile%s\n' "${BOLD}" "${RST}"
+    if [[ -r "${PROFILE_ENV}" ]]; then
+        sed 's/^/  /' "${PROFILE_ENV}"
+    else
+        warn "no profile yet - is retro-hwprofile.service running? (sudo retro-hwprofile apply)"
+    fi
+    printf '  override: add "retro.tier=low|standard" to the boot line, or write it to /etc/retro-os/tier.override\n'
+}
+
+cmd_menu() {
+    [[ -x "${HELPER_DIR}/retro-menu-gen" ]] || die "retro-menu-gen missing"
+    "${HELPER_DIR}/retro-menu-gen" --user "${HOME}"
+    if [[ -n "${DISPLAY:-}" ]] && command -v openbox >/dev/null 2>&1; then
+        openbox --reconfigure && ok "Openbox menu reloaded"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Dispatcher
+# -----------------------------------------------------------------------------
 main() {
-    local cmd="${1:-help}"; shift || true
+    ORIG_ARGS=("$@")
+    init_colors
+    local cmd="${1:-}"
+    [[ $# -gt 0 ]] && shift
     case "${cmd}" in
-        doctor)  cmd_doctor "$@" ;;
-        bujji)   cmd_bujji ;;
-        info)    cmd_info ;;
-        ghost)   cmd_ghost "$@" ;;
-        kali)    cmd_kali ;;
-        help|-h|--help) usage ;;
-        *) usage; die "unknown command: ${cmd}" ;;
+        "")                   print_banner; usage ;;
+        help|-h|--help)       print_banner; usage ;;
+        -V|--version|version) printf 'retro %s (%s %s %s)\n' "${RETRO_CLI_VERSION}" "${RETRO_OS_NAME}" "${RETRO_OS_VERSION}" "${RETRO_OS_EDITION}" ;;
+        term)                 cmd_term "$@" ;;
+        mon)                  cmd_mon "$@" ;;
+        boost)                cmd_boost "$@" ;;
+        share)                cmd_share "$@" ;;
+        fetch)                cmd_fetch "$@" ;;
+        update)               cmd_update "$@" ;;
+        doctor)               cmd_doctor "$@" ;;
+        panic)                cmd_panic "$@" ;;
+        ai)                   cmd_ai "$@" ;;
+        profile)              cmd_profile "$@" ;;
+        menu)                 cmd_menu "$@" ;;
+        *)                    warn "unknown command: ${cmd}"; usage >&2; exit 2 ;;
     esac
 }
 
