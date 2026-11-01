@@ -96,12 +96,18 @@ install_kernel_and_live() {
     retro_info "Configuring initramfs-tools before the kernel is installed"
     mkdir -p /etc/initramfs-tools/conf.d
     retro_write /etc/initramfs-tools/conf.d/retro.conf 0644 <<'EOF'
-# MODULES=most is mandatory for a live image that must boot on arbitrary hardware.
 MODULES=most
 COMPRESS=zstd
 EOF
     retro_write /etc/initramfs-tools/conf.d/resume 0644 <<'EOF'
 RESUME=none
+EOF
+
+    # SquashFS, OverlayFS മൊഡ്യൂളുകൾ നിർബന്ധമായും initramfs-ൽ ഉൾപ്പെടുത്താൻ:
+    cat >> /etc/initramfs-tools/modules <<'EOF'
+overlay
+squashfs
+loop
 EOF
 
     retro_info "Installing live-boot engine (live-boot + live-config)"
