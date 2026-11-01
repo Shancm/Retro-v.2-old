@@ -338,6 +338,9 @@ retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
 Reconnaissance|Nmap (CLI)|nmap|--help|utilities-terminal|CLI
 Reconnaissance|Nmap GUI (NmapSI4)|nmapsi4||utilities-terminal|GUI
 Reconnaissance|RustScan|rustscan|--help|utilities-terminal|CLI
+Reconnaissance|Naabu|naabu|--help|utilities-terminal|CLI
+Reconnaissance|httpx|httpx|--help|utilities-terminal|CLI
+Web Audit|Nikto|nikto|-Help|utilities-terminal|CLI
 Web Audit|SQLMap|sqlmap|--help|utilities-terminal|CLI
 Web Audit|ffuf|ffuf|--help|utilities-terminal|CLI
 Passwords|Hydra (CLI)|hydra|--help|utilities-terminal|CLI
@@ -346,8 +349,10 @@ Passwords|John the Ripper (CLI)|john||utilities-terminal|CLI
 Passwords|John the Ripper (GUI - Johnny)|johnny||security-high|GUI
 Wireless|Aircrack-ng|aircrack-ng|--help|utilities-terminal|CLI
 Wireless|Wifite|wifite||utilities-terminal|CLI
+Sniffing|Tshark|tshark|--help|utilities-terminal|CLI
 Sniffing|Wireshark (GUI)|wireshark||wireshark|GUI
 Firewall|Gufw Firewall (GUI)|gufw||security-high|GUI
+Audio|Volume & Mic Control (GUI)|pavucontrol||audio-card|GUI
 EOF
 
     retro_write "${RETRO_HELPER_DIR}/retro-jgmenu-csv" 0755 <<'EOF'
@@ -424,6 +429,9 @@ build_openbox_menu() {
     have firefox-esr && ob_item "Web Browser" "firefox-esr"
     have mousepad && ob_item "Text Editor" "mousepad"
     have vlc && ob_item "VLC Media Player" "vlc"
+    have geany && ob_item "Geany Code Editor" "geany"
+    have badwolf && ob_item "Badwolf Light Browser" "badwolf"
+    have pavucontrol && ob_item "PulseAudio Volume Control" "pavucontrol"
     printf '  <separator/>\n'
 
     if (( ${#CAT_ORDER[@]} > 0 )); then
@@ -524,6 +532,9 @@ build_jgmenu_csv() {
             done
         fi
         echo "^tag(retro-apps)"
+        have geany && ob_item "Geany Code Editor" "geany"
+        have badwolf && ob_item "Badwolf Light Browser" "badwolf"
+        have pavucontrol && ob_item "PulseAudio Volume Control" "pavucontrol"
         have vlc && echo "VLC Media Player,vlc,vlc"
         have evince && echo "Document Viewer,evince,x-office-document"
         have ristretto && echo "Image Viewer,ristretto,image-x-generic"
