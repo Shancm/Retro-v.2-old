@@ -430,7 +430,7 @@ build_openbox_menu() {
     have mousepad && ob_item "Text Editor" "mousepad"
     have vlc && ob_item "VLC Media Player" "vlc"
     have geany && ob_item "Geany Code Editor" "geany"
-    have badwolf && ob_item "Badwolf Light Browser" "badwolf"
+    have dillo && ob_item "Dillo Light Browser" "dillo"
     have pavucontrol && ob_item "PulseAudio Volume Control" "pavucontrol"
     printf '  <separator/>\n'
 
