@@ -333,19 +333,18 @@ EOF
 write_menu_tools() {
     retro_info "Installing menu generator + tool catalogue"
 
-    retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
-Reconnaissance|Nmap|nmap|--help|utilities-terminal|CLI
+retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
+Reconnaissance|Nmap (CLI)|nmap|--help|utilities-terminal|CLI
+Reconnaissance|Nmap GUI (NmapSI4)|nmapsi4||utilities-terminal|GUI
 Reconnaissance|RustScan|rustscan|--help|utilities-terminal|CLI
-Reconnaissance|Naabu|naabu|--help|utilities-terminal|CLI
-Reconnaissance|httpx|httpx|--help|utilities-terminal|CLI
-Web Audit|Nikto|nikto|-Help|utilities-terminal|CLI
 Web Audit|SQLMap|sqlmap|--help|utilities-terminal|CLI
 Web Audit|ffuf|ffuf|--help|utilities-terminal|CLI
-Passwords|Hydra|hydra|--help|utilities-terminal|CLI
-Passwords|John the Ripper|john||utilities-terminal|CLI
+Passwords|Hydra (CLI)|hydra|--help|utilities-terminal|CLI
+Passwords|Hydra (GUI - XHydra)|xhydra||security-high|GUI
+Passwords|John the Ripper (CLI)|john||utilities-terminal|CLI
+Passwords|John the Ripper (GUI - Johnny)|johnny||security-high|GUI
 Wireless|Aircrack-ng|aircrack-ng|--help|utilities-terminal|CLI
 Wireless|Wifite|wifite||utilities-terminal|CLI
-Sniffing|Tshark|tshark|--help|utilities-terminal|CLI
 Sniffing|Wireshark (GUI)|wireshark||wireshark|GUI
 Firewall|Gufw Firewall (GUI)|gufw||security-high|GUI
 EOF
