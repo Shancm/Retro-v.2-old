@@ -392,7 +392,7 @@ set -Eeuo pipefail
 LIST_DIR="${RETRO_MENU_LIST_DIR:-/opt/retro-os/menu.d}"
 ROOT="${RETRO_MENU_ROOT:-}"
 MARK="retro-os:generated"
-TERM_HOLD="xfce4-terminal --hold -e"
+TERM_HOLD="xfce4-terminal -e bash -c"
 TERM_PLAIN="xfce4-terminal -e"
 
 declare -a CAT_ORDER=()
