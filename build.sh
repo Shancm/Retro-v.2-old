@@ -669,6 +669,11 @@ LABEL live
   KERNEL /live/vmlinuz
   APPEND initrd=/live/initrd.img ${args} quiet
 
+LABEL persistence
+  MENU LABEL Retro OS Live - ^Persistence (save changes to USB)
+  KERNEL /live/vmlinuz
+  APPEND initrd=/live/initrd.img ${args} persistence quiet
+
 LABEL low
   MENU LABEL Retro OS Live - ^Low-spec / legacy hardware (force low tier)
   KERNEL /live/vmlinuz
@@ -705,6 +710,11 @@ set menu_color_highlight=black/light-green
 
 menuentry "Retro OS Live" --id live {
     linux /live/vmlinuz ${args} quiet
+    initrd /live/initrd.img
+}
+
+menuentry "Retro OS Live - Persistence (save changes to USB)" --id persistence {
+    linux /live/vmlinuz ${args} persistence quiet
     initrd /live/initrd.img
 }
 
