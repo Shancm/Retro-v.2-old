@@ -42,6 +42,7 @@ install_graphical_stack() {
         network-manager-gnome volumeicon-alsa \
         policykit-1 policykit-1-gnome gvfs gvfs-backends udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
+        vlc ristretto evince galculator xarchiver p7zip-full unrar-free \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono
 
     # Hardware-specific X drivers: optional so a single missing package
@@ -348,28 +349,26 @@ EOF
 write_menu_tools() {
     retro_info "Installing menu generator + tool catalogue"
 
+    # Category|Label|Binary|Arguments|Icon|Type (GUI or CLI)
     retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
-# Category|Label|Binary|Arguments|Icon
-# Every entry is launched as:  xfce4-terminal --hold -e '<Binary> <Arguments>'
-# Entries whose binary is not installed are hidden automatically.
-Reconnaissance|Nmap|nmap|--help|utilities-terminal
-Reconnaissance|RustScan|rustscan|--help|utilities-terminal
-Reconnaissance|Naabu|naabu|--help|utilities-terminal
-Reconnaissance|httpx|httpx|--help|utilities-terminal
-Web Audit|Nikto|nikto|-Help|utilities-terminal
-Web Audit|SQLMap|sqlmap|--help|utilities-terminal
-Web Audit|ffuf|ffuf|--help|utilities-terminal
-Passwords|Hydra|hydra|--help|utilities-terminal
-Passwords|John the Ripper|john|--help|utilities-terminal
-Wireless|Aircrack-ng|aircrack-ng|--help|utilities-terminal
-Wireless|Wifite|wifite|--help|utilities-terminal
-Sniffing|Tshark|tshark|--help|utilities-terminal
-Sniffing|Wireshark|wireshark|--help|wireshark
+Reconnaissance|Nmap|nmap|--help|utilities-terminal|CLI
+Reconnaissance|RustScan|rustscan|--help|utilities-terminal|CLI
+Reconnaissance|Naabu|naabu|--help|utilities-terminal|CLI
+Reconnaissance|httpx|httpx|--help|utilities-terminal|CLI
+Web Audit|Nikto|nikto|-Help|utilities-terminal|CLI
+Web Audit|SQLMap|sqlmap|--help|utilities-terminal|CLI
+Web Audit|ffuf|ffuf|--help|utilities-terminal|CLI
+Passwords|Hydra|hydra|--help|utilities-terminal|CLI
+Passwords|John the Ripper|john||utilities-terminal|CLI
+Wireless|Aircrack-ng|aircrack-ng|--help|utilities-terminal|CLI
+Wireless|Wifite|wifite||utilities-terminal|CLI
+Sniffing|Tshark|tshark|--help|utilities-terminal|CLI
+Sniffing|Wireshark (GUI)|wireshark||wireshark|GUI
+Firewall|Gufw Firewall (GUI)|gufw||security-high|GUI
 EOF
 
     retro_write "${RETRO_HELPER_DIR}/retro-jgmenu-csv" 0755 <<'EOF'
 #!/usr/bin/env bash
-# jgmenu csv_cmd shim: prefer the generated Retro menu, fall back to auto-generated apps.
 f="${XDG_CONFIG_HOME:-${HOME}/.config}/jgmenu/retro-menu.csv"
 if [[ -r "${f}" ]]; then
     exec cat "${f}"
@@ -379,21 +378,11 @@ EOF
 
     retro_write "${RETRO_HELPER_DIR}/retro-menu-gen" 0755 <<'EOF'
 #!/usr/bin/env bash
-# retro-menu-gen - generates the Openbox right-click menu, the jgmenu Start menu
-# and the per-tool .desktop launchers from /opt/retro-os/menu.d/*.list.
-#
-#   retro-menu-gen --system        (root)  .desktop files + /etc/skel menus
-#   retro-menu-gen --user [HOME]           menus for one user (backups kept)
-#   retro-menu-gen --list                  show detected tools
-#
-# Test hooks: RETRO_MENU_ROOT=<prefix> RETRO_MENU_LIST_DIR=<dir> RETRO_MENU_ASSUME_ALL=1
 set -Eeuo pipefail
 
 LIST_DIR="${RETRO_MENU_LIST_DIR:-/opt/retro-os/menu.d}"
 ROOT="${RETRO_MENU_ROOT:-}"
 MARK="retro-os:generated"
-TERM_HOLD="xfce4-terminal -e bash -c"
-TERM_PLAIN="xfce4-terminal -e"
 
 declare -a CAT_ORDER=()
 declare -A CAT_ITEMS=()
@@ -417,27 +406,221 @@ have() {
 }
 
 load_entries() {
-    local f line cat label bin args icon
+    local f line cat label bin args icon mtype
     shopt -s nullglob
     for f in "${LIST_DIR}"/*.list; do
         while IFS= read -r line || [[ -n "${line}" ]]; do
             [[ -z "${line//[[:space:]]/}" ]] && continue
             [[ "${line}" =~ ^[[:space:]]*# ]] && continue
-            IFS='|' read -r cat label bin args icon <<< "${line}"
+            IFS='|' read -r cat label bin args icon mtype <<< "${line}"
             if [[ -z "${cat}" || -z "${label}" || -z "${bin}" ]]; then
-                warn "skipping malformed line in ${f}: ${line}"
                 continue
             fi
             have "${bin}" || continue
-            [[ -n "${args}" ]] || args="--help"
             icon="${icon:-utilities-terminal}"
+            mtype="${mtype:-CLI}"
             if [[ -z "${CAT_ITEMS[${cat}]+x}" ]]; then
                 CAT_ORDER+=("${cat}")
                 CAT_ITEMS["${cat}"]=""
             fi
-            CAT_ITEMS["${cat}"]+="${label}|${bin} ${args}|${icon}"$'\n'
+            CAT_ITEMS["${cat}"]+="${label}|${bin}|${args}|${icon}|${mtype}"$'\n'
         done < "${f}"
     done
+}
+
+ob_item() {
+    printf '  <item label="%s">\n    <action name="Execute">\n      <command>%s</command>\n    </action>\n  </item>\n' \
+        "$(xml_escape "$1")" "$(xml_escape "$2")"
+}
+
+build_openbox_menu() {
+    local cat label bin args icon mtype cid=0 cmd_exec
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+    printf '<!-- %s -->\n' "${MARK}"
+    printf '<openbox_menu xmlns="http://openbox.org/3.4/menu">\n'
+    printf '<menu id="root-menu" label="Retro OS">\n'
+    
+    # പ്രധാന ആപ്പുകൾ
+    ob_item "Terminal" "xfce4-terminal"
+    ob_item "File Manager" "pcmanfm"
+    have firefox-esr && ob_item "Web Browser" "firefox-esr"
+    have mousepad && ob_item "Text Editor" "mousepad"
+    have vlc && ob_item "VLC Media Player" "vlc"
+    printf '  <separator/>\n'
+
+    # സെക്യൂരിറ്റി ടൂളുകൾ
+    if (( ${#CAT_ORDER[@]} > 0 )); then
+        printf '  <menu id="retro-security" label="Security Tools">\n'
+        for cat in "${CAT_ORDER[@]}"; do
+            cid=$(( cid + 1 ))
+            printf '  <menu id="retro-sec-%s" label="%s">\n' "${cid}" "$(xml_escape "${cat}")"
+            while IFS='|' read -r label bin args icon mtype; do
+                [[ -n "${label}" ]] || continue
+                if [[ "${mtype}" == "GUI" ]]; then
+                    cmd_exec="${bin} ${args}"
+                else
+                    cmd_exec="xfce4-terminal -x bash -c '${bin} ${args}; exec bash -i'"
+                fi
+                ob_item "${label}" "${cmd_exec}"
+            done <<< "${CAT_ITEMS[${cat}]}"
+            printf '  </menu>\n'
+        done
+        printf '  </menu>\n'
+    fi
+
+    # മൾട്ടിമീഡിയ & യൂട്ടിലിറ്റികൾ
+    printf '  <menu id="retro-media" label="Applications">\n'
+    have vlc && ob_item "VLC Media Player" "vlc"
+    have evince && ob_item "PDF Document Viewer" "evince"
+    have ristretto && ob_item "Image Viewer" "ristretto"
+    have galculator && ob_item "Calculator" "galculator"
+    have xarchiver && ob_item "Archive Manager" "xarchiver"
+    printf '  </menu>\n'
+
+    # സിസ്റ്റം ടൂളുകൾ
+    printf '  <menu id="retro-system" label="Retro System">\n'
+    ob_item "Retro Boost (free RAM)" "xfce4-terminal -x bash -c 'retro boost; exec bash -i'"
+    ob_item "Retro Doctor (repair)"  "xfce4-terminal -x bash -c 'retro doctor; exec bash -i'"
+    ob_item "Retro Update"           "xfce4-terminal -x bash -c 'retro update; exec bash -i'"
+    ob_item "Retro AI Companion"     "xfce4-terminal -e 'retro ai'"
+    ob_item "System Monitor"         "xfce4-terminal -e 'retro mon'"
+    ob_item "System Info"            "xfce4-terminal -x bash -c 'retro fetch; exec bash -i'"
+    have lxtask && ob_item "Task Manager" "lxtask"
+    printf '  </menu>\n'
+
+    # സെറ്റിംഗ്സ് & എക്സിറ്റ്
+    printf '  <menu id="retro-settings" label="Settings">\n'
+    have nm-connection-editor && ob_item "Network Connections" "nm-connection-editor"
+    have lxappearance && ob_item "Appearance" "lxappearance"
+    have obconf && ob_item "Openbox Configuration" "obconf"
+    printf '  <item label="Reload Openbox">\n    <action name="Reconfigure"/>\n  </item>\n'
+    printf '  </menu>\n'
+
+    printf '  <separator/>\n'
+    have calamares && ob_item "Install Retro OS" "sudo -E calamares"
+    ob_item "Lock Screen" "dm-tool lock"
+    printf '  <menu id="retro-exit" label="Exit">\n'
+    printf '  <item label="Log Out">\n    <action name="Exit"/>\n  </item>\n'
+    ob_item "Reboot" "systemctl reboot"
+    ob_item "Shut Down" "systemctl poweroff"
+    printf '  </menu>\n'
+    printf '</menu>\n</openbox_menu>\n'
+}
+
+build_jgmenu_csv() {
+    local cat label bin args icon mtype cid=0 cmd_exec
+    {
+        echo "Terminal,xfce4-terminal,utilities-terminal"
+        echo "File Manager,pcmanfm,system-file-manager"
+        have firefox-esr && echo "Web Browser,firefox-esr,firefox-esr"
+        have mousepad && echo "Text Editor,mousepad,accessories-text-editor"
+        have vlc && echo "VLC Media Player,vlc,vlc"
+        echo "^sep()"
+        if (( ${#CAT_ORDER[@]} > 0 )); then
+            echo "Security Tools,^checkout(retro-sec),security-high"
+        fi
+        echo "Applications,^checkout(retro-apps),applications-other"
+        echo "Retro System,^checkout(retro-sys),preferences-system"
+        echo "Settings,^checkout(retro-set),preferences-desktop"
+        echo "^sep()"
+        have calamares && echo "Install Retro OS,sudo -E calamares,system-software-install"
+        echo "Exit,^checkout(retro-exit),system-shutdown"
+        echo
+        if (( ${#CAT_ORDER[@]} > 0 )); then
+            echo "^tag(retro-sec)"
+            for cat in "${CAT_ORDER[@]}"; do
+                cid=$(( cid + 1 ))
+                echo "${cat},^checkout(retro-sec-${cid}),folder"
+            done
+            echo
+            cid=0
+            for cat in "${CAT_ORDER[@]}"; do
+                cid=$(( cid + 1 ))
+                echo "^tag(retro-sec-${cid})"
+                while IFS='|' read -r label bin args icon mtype; do
+                    [[ -n "${label}" ]] || continue
+                    if [[ "${mtype}" == "GUI" ]]; then
+                        cmd_exec="${bin} ${args}"
+                    else
+                        cmd_exec="xfce4-terminal -x bash -c '${bin} ${args}; exec bash -i'"
+                    fi
+                    echo "${label},${cmd_exec},${icon}"
+                done <<< "${CAT_ITEMS[${cat}]}"
+                echo
+            done
+        fi
+        echo "^tag(retro-apps)"
+        have vlc && echo "VLC Media Player,vlc,vlc"
+        have evince && echo "Document Viewer,evince,x-office-document"
+        have ristretto && echo "Image Viewer,ristretto,image-x-generic"
+        have galculator && echo "Calculator,galculator,accessories-calculator"
+        have xarchiver && echo "Archive Manager,xarchiver,package-x-generic"
+        echo
+        echo "^tag(retro-sys)"
+        echo "Retro Boost,xfce4-terminal -x bash -c 'retro boost; exec bash -i',utilities-system-monitor"
+        echo "Retro Doctor,xfce4-terminal -x bash -c 'retro doctor; exec bash -i',system-run"
+        echo "Retro Update,xfce4-terminal -x bash -c 'retro update; exec bash -i',system-software-update"
+        echo "Retro AI,xfce4-terminal -e 'retro ai',face-smile"
+        echo "System Monitor,xfce4-terminal -e 'retro mon',utilities-system-monitor"
+        echo "System Info,xfce4-terminal -x bash -c 'retro fetch; exec bash -i',computer"
+        echo
+        echo "^tag(retro-set)"
+        have nm-connection-editor && echo "Network Connections,nm-connection-editor,preferences-system-network"
+        have lxappearance && echo "Appearance,lxappearance,preferences-desktop-theme"
+        have obconf && echo "Openbox Configuration,obconf,preferences-system"
+        echo
+        echo "^tag(retro-exit)"
+        echo "Log Out,openbox --exit,system-log-out"
+        echo "Reboot,systemctl reboot,system-reboot"
+        echo "Shut Down,systemctl poweroff,system-shutdown"
+    }
+}
+
+atomic_write() {
+    local dest="$1" tmp
+    mkdir -p "$(dirname "${dest}")"
+    tmp="$(mktemp "${dest}.XXXXXX")"
+    cat > "${tmp}"
+    chmod 0644 "${tmp}"
+    mv -f "${tmp}" "${dest}"
+}
+
+write_menus_to() {
+    local base="$1" mode="$2"
+    local ob="${base}/.config/openbox/menu.xml"
+    local csv="${base}/.config/jgmenu/retro-menu.csv"
+    build_openbox_menu | atomic_write "${ob}"
+    build_jgmenu_csv | atomic_write "${csv}"
+}
+
+main() {
+    local action="${1:-}"
+    case "${action}" in
+        --system)
+            load_entries
+            write_menus_to "${ROOT}/etc/skel" skel
+            ;;
+        --user)
+            local home="${2:-${HOME}}"
+            load_entries
+            write_menus_to "${home}" user
+            if [[ "$(id -u)" -eq 0 ]]; then
+                local owner
+                owner="$(stat -c %U:%G "${home}")"
+                chown -R "${owner}" "${home}/.config/openbox" "${home}/.config/jgmenu" 2>/dev/null || true
+            fi
+            ;;
+        --list)
+            load_entries
+            ;;
+        *)
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"
+EOF
 }
 
 # --- Openbox menu.xml ---------------------------------------------------------
