@@ -97,13 +97,12 @@ install_kernel_and_live() {
     mkdir -p /etc/initramfs-tools/conf.d
     retro_write /etc/initramfs-tools/conf.d/retro.conf 0644 <<'EOF'
 MODULES=most
-COMPRESS=zstd
+COMPRESS=gzip
 EOF
     retro_write /etc/initramfs-tools/conf.d/resume 0644 <<'EOF'
 RESUME=none
 EOF
 
-    # SquashFS, OverlayFS മൊഡ്യൂളുകൾ നിർബന്ധമായും initramfs-ൽ ഉൾപ്പെടുത്താൻ:
     cat >> /etc/initramfs-tools/modules <<'EOF'
 overlay
 squashfs
@@ -111,7 +110,7 @@ loop
 EOF
 
     retro_info "Installing live-boot engine (live-boot + live-config)"
-    retro_apt_install initramfs-tools live-boot live-boot-initramfs-tools live-config live-config-systemd
+    retro_apt_install initramfs-tools live-boot live-config live-config-systemd
 
     retro_info "Installing kernel + CPU microcode"
     retro_apt_install linux-image-amd64
