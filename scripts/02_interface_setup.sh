@@ -44,9 +44,9 @@ install_graphical_stack() {
         policykit-1 policykit-1-gnome udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
-        gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs usbmount \
+        gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
         cbatticon parcellite pavucontrol blueman \
-        badwolf geany geany-plugins \
+        dillo geany geany-plugins \
         vlc ristretto evince galculator xarchiver p7zip-full unrar-free
 
     retro_apt_install_optional \
