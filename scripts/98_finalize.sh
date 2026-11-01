@@ -58,6 +58,17 @@ fix_helper_permissions() {
 
 rebuild_initramfs() {
     retro_info "Final initramfs rebuild (all kernels)"
+    mkdir -p /etc/initramfs-tools/conf.d
+    cat > /etc/initramfs-tools/conf.d/retro.conf <<'EOF'
+MODULES=most
+COMPRESS=zstd
+EOF
+    cat >> /etc/initramfs-tools/modules <<'EOF'
+overlay
+squashfs
+loop
+EOF
+
     update-initramfs -u -k all
 }
 
