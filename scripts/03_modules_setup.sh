@@ -41,6 +41,8 @@ install_classic_tools() {
     # GUI സെക്യൂരിറ്റി ടൂളുകൾ
     retro_apt_install_optional gufw etherape
 
+    retro_apt_install_optional xhydra johnny nmapsi4 gufw etherape
+
     # Wireshark ഗ്രൂപ്പ് അനുമതി
     getent group wireshark >/dev/null || groupadd --system wireshark
     usermod -aG wireshark "${RETRO_USER}"
