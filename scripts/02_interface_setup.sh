@@ -32,8 +32,8 @@ install_graphical_stack() {
 
     retro_info "Installing Xorg, drivers and session components"
     retro_apt_install \
-        xserver-xorg-core xserver-xorg-legacy xserver-xorg-input-libinput \
-        xserver-xorg-video-fbdev xserver-xorg-video-vesa \
+        xserver-xorg xserver-xorg-core xserver-xorg-legacy xserver-xorg-input-libinput \
+        xserver-xorg-video-all xserver-xorg-video-intel xserver-xorg-video-fbdev xserver-xorg-video-vesa \
         libgl1-mesa-dri libglx-mesa0 \
         xinit xauth x11-xserver-utils x11-utils x11-xkb-utils \
         xdg-utils xdg-user-dirs dbus-x11 \
@@ -532,9 +532,9 @@ build_jgmenu_csv() {
             done
         fi
         echo "^tag(retro-apps)"
-        have geany && ob_item "Geany Code Editor" "geany"
-        have badwolf && ob_item "Badwolf Light Browser" "badwolf"
-        have pavucontrol && ob_item "PulseAudio Volume Control" "pavucontrol"
+        have geany && echo "Geany Code Editor,geany,geany"
+        have dillo && echo "Dillo Light Browser,dillo,dillo"
+        have pavucontrol && echo "Volume Control,pavucontrol,audio-card"
         have vlc && echo "VLC Media Player,vlc,vlc"
         have evince && echo "Document Viewer,evince,x-office-document"
         have ristretto && echo "Image Viewer,ristretto,image-x-generic"
