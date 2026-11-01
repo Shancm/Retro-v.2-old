@@ -26,18 +26,22 @@ install_classic_tools() {
     echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections
 
     retro_info "Installing classic auditing tools (CLI + GUI)"
-    # പ്രധാന സെക്യൂരിറ്റി പാക്കേജുകൾ
     retro_apt_install \
         nmap wireshark tshark aircrack-ng hydra nikto sqlmap wifite \
         tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
 
-    # John The Ripper (ഡെബിയൻ ബുക്ക്‌വോമിൽ john, john-data ഉറപ്പാക്കുന്നു)
+    # John The Ripper
     retro_apt_install_optional john john-data
 
-    # GUI സെക്യൂരിറ്റി & നെറ്റ്‌വർക്ക് ടൂളുകൾ
+    # /usr/sbin/john സാധാരണ യൂസർമാർക്കും ലഭ്യമാക്കാൻ /usr/local/bin-ലേക്ക് ലിങ്ക് ചെയ്യുന്നു
+    if [[ -x /usr/sbin/john ]]; then
+        ln -sf /usr/sbin/john /usr/local/bin/john
+    fi
+
+    # GUI സെക്യൂരിറ്റി ടൂളുകൾ
     retro_apt_install_optional gufw etherape
 
-    # retro യൂസറെ wireshark ഗ്രൂപ്പിൽ ചേർക്കുന്നു
+    # Wireshark ഗ്രൂപ്പ് അനുമതി
     getent group wireshark >/dev/null || groupadd --system wireshark
     usermod -aG wireshark "${RETRO_USER}"
 }
