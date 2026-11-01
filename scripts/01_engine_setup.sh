@@ -157,6 +157,12 @@ EOF
 ff02::1     ip6-allnodes
 ff02::2     ip6-allrouters
 EOF
+
+retro_info "Configuring global PATH for all users (/usr/sbin support)"
+retro_write /etc/profile.d/retro-path.sh 0644 <<'EOF'
+export PATH="${PATH}:/usr/local/sbin:/usr/sbin:/sbin"
+EOF
+
 }
 
 # -----------------------------------------------------------------------------
