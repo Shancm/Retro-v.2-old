@@ -680,9 +680,9 @@ LABEL low
   APPEND initrd=/live/initrd.img ${args} retro.tier=low noresume udev.children_max=2 quiet
 
 LABEL safe
-  MENU LABEL Retro OS Live - ^Safe graphics (nomodeset, no APIC/ACPI)
+  MENU LABEL Retro OS Live - ^Safe graphics (nomodeset / generic VESA)
   KERNEL /live/vmlinuz
-  APPEND initrd=/live/initrd.img ${args} nomodeset noapic acpi=off
+  APPEND initrd=/live/initrd.img ${args} nomodeset xforcevesa
 
 LABEL install
   MENU LABEL ^Install Retro OS to disk (Calamares)
@@ -723,8 +723,8 @@ menuentry "Retro OS Live - Low-spec / legacy hardware (force low tier)" --id low
     initrd /live/initrd.img
 }
 
-menuentry "Retro OS Live - Safe graphics (nomodeset, no APIC/ACPI)" --id safe {
-    linux /live/vmlinuz ${args} nomodeset noapic acpi=off
+menuentry "Retro OS Live - Safe graphics (nomodeset / generic VESA)" --id safe {
+    linux /live/vmlinuz ${args} nomodeset xforcevesa
     initrd /live/initrd.img
 }
 
