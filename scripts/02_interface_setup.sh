@@ -39,22 +39,19 @@ install_graphical_stack() {
         xdg-utils xdg-user-dirs dbus-x11 \
         lightdm lightdm-gtk-greeter \
         openbox obconf tint2 pcmanfm feh picom jgmenu xfce4-terminal \
-        mousepad lxtask lxappearance xarchiver scrot dmenu \
+        mousepad lxtask lxappearance scrot dmenu \
         network-manager-gnome volumeicon-alsa \
-        policykit-1 policykit-1-gnome gvfs gvfs-backends udisks2 \
+        policykit-1 policykit-1-gnome udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
-        vlc ristretto evince galculator p7zip-full unrar-free
+        gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs usbmount \
+        cbatticon parcellite pavucontrol blueman \
+        badwolf geany geany-plugins \
+        vlc ristretto evince galculator xarchiver p7zip-full unrar-free
 
     retro_apt_install_optional \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
         xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu
-        
-    retro_apt_install \
-        gvfs gvfs-backends gvfs-daemons gvfs-fuse \
-        udisks2 libmtp-runtime jmtpfs \
-        usbmount
-   
 
     if [[ "${RETRO_INSTALL_BROWSER}" == "1" ]]; then
         retro_apt_install_optional firefox-esr
