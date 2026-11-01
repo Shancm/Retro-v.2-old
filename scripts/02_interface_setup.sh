@@ -396,10 +396,6 @@ xml_escape() {
     printf '%s' "${s}"
 }
 
-slugify() {
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\+/-/g' -e 's/^-//' -e 's/-$//'
-}
-
 have() {
     [[ -n "${RETRO_MENU_ASSUME_ALL:-}" ]] && return 0
     command -v "$1" >/dev/null 2>&1
@@ -440,7 +436,6 @@ build_openbox_menu() {
     printf '<openbox_menu xmlns="http://openbox.org/3.4/menu">\n'
     printf '<menu id="root-menu" label="Retro OS">\n'
     
-    # പ്രധാന ആപ്പുകൾ
     ob_item "Terminal" "xfce4-terminal"
     ob_item "File Manager" "pcmanfm"
     have firefox-esr && ob_item "Web Browser" "firefox-esr"
@@ -448,7 +443,6 @@ build_openbox_menu() {
     have vlc && ob_item "VLC Media Player" "vlc"
     printf '  <separator/>\n'
 
-    # സെക്യൂരിറ്റി ടൂളുകൾ
     if (( ${#CAT_ORDER[@]} > 0 )); then
         printf '  <menu id="retro-security" label="Security Tools">\n'
         for cat in "${CAT_ORDER[@]}"; do
@@ -468,7 +462,6 @@ build_openbox_menu() {
         printf '  </menu>\n'
     fi
 
-    # മൾട്ടിമീഡിയ & യൂട്ടിലിറ്റികൾ
     printf '  <menu id="retro-media" label="Applications">\n'
     have vlc && ob_item "VLC Media Player" "vlc"
     have evince && ob_item "PDF Document Viewer" "evince"
@@ -477,7 +470,6 @@ build_openbox_menu() {
     have xarchiver && ob_item "Archive Manager" "xarchiver"
     printf '  </menu>\n'
 
-    # സിസ്റ്റം ടൂളുകൾ
     printf '  <menu id="retro-system" label="Retro System">\n'
     ob_item "Retro Boost (free RAM)" "xfce4-terminal -x bash -c 'retro boost; exec bash -i'"
     ob_item "Retro Doctor (repair)"  "xfce4-terminal -x bash -c 'retro doctor; exec bash -i'"
@@ -488,7 +480,6 @@ build_openbox_menu() {
     have lxtask && ob_item "Task Manager" "lxtask"
     printf '  </menu>\n'
 
-    # സെറ്റിംഗ്സ് & എക്സിറ്റ്
     printf '  <menu id="retro-settings" label="Settings">\n'
     have nm-connection-editor && ob_item "Network Connections" "nm-connection-editor"
     have lxappearance && ob_item "Appearance" "lxappearance"
