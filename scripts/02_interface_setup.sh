@@ -49,6 +49,12 @@ install_graphical_stack() {
     retro_apt_install_optional \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
         xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu
+        
+    retro_apt_install \
+        gvfs gvfs-backends gvfs-daemons gvfs-fuse \
+        udisks2 libmtp-runtime jmtpfs \
+        usbmount
+   
 
     if [[ "${RETRO_INSTALL_BROWSER}" == "1" ]]; then
         retro_apt_install_optional firefox-esr
@@ -897,9 +903,9 @@ EOF
 bm_open_method=0
 
 [volume]
-mount_on_startup=0
+mount_on_startup=1
 mount_removable=1
-autorun=0
+autorun=1
 
 [ui]
 always_show_tabs=0
