@@ -227,8 +227,12 @@ fi
 start_once tint2 tint2 -c "${panel_cfg}"
 sleep 0.5
 
+# ട്രേ ആപ്‌ലെറ്റുകൾ (Network, Volume, Bluetooth, Clipboard, Battery)
 start_once nm-applet nm-applet
 start_once volumeicon volumeicon
+start_once blueman-applet blueman-applet
+start_once parcellite parcellite
+start_once cbatticon cbatticon -u 5
 
 for ctl in Master Speaker Headphone PCM; do
     amixer -q sset "${ctl}" 80% unmute >/dev/null 2>&1 || true
