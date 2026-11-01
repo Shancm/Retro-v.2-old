@@ -196,12 +196,24 @@ test_boot_files() {
         if [[ -s "${k}" ]]; then pass "kernel ${k} non-empty"; else fail "kernel ${k} non-empty" "reinstall linux-image-amd64"; fi
         if [[ -s "${initrd}" ]]; then
             pass "initramfs ${initrd} non-empty"
-            if lsinitramfs "${initrd}" 2>/dev/null | grep -q 'scripts/live'; then
+            
+            # unmkinitramfs വഴി മൈക്രോകോഡും പ്രധാന ആർക്കൈവും പൂർണ്ണമായി പരിശോധിക്കുന്നു
+            local contents=""
+            local tmp_test
+            tmp_test="$(mktemp -d)"
+            if unmkinitramfs "${initrd}" "${tmp_test}" 2>/dev/null; then
+                contents="$(find "${tmp_test}" 2>/dev/null)"
+            else
+                contents="$(lsinitramfs "${initrd}" 2>/dev/null || true)"
+            fi
+            rm -rf "${tmp_test}"
+
+            if grep -q 'scripts/live' <<< "${contents}"; then
                 pass "initramfs ${ver} contains live-boot scripts"
             else
-                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot (98_finalize.sh does this)"
+                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
             fi
-            if lsinitramfs "${initrd}" 2>/dev/null | grep -Eq 'squashfs|overlay'; then
+            if grep -Eq 'squashfs|overlay' <<< "${contents}"; then
                 pass "initramfs ${ver} has squashfs/overlay support"
             else
                 fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
