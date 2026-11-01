@@ -23,17 +23,23 @@ export DEBIAN_FRONTEND=noninteractive LC_ALL=C LANG=C
 # -----------------------------------------------------------------------------
 install_classic_tools() {
     retro_info "Preseeding wireshark-common (non-root capture via group 'wireshark')"
-    echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections
+    echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections[span_11](start_span)[span_11](end_span)
 
-    retro_info "Installing classic auditing tools"
+    retro_info "Installing classic auditing tools (CLI + GUI)"
+    # പ്രധാന സെക്യൂരിറ്റി പാക്കേജുകൾ
     retro_apt_install \
-        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite \
-        tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
-    retro_apt_install_optional reaver pixiewps wireless-tools
+        nmap wireshark tshark aircrack-ng hydra nikto sqlmap wifite \
+        tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw[span_12](start_span)[span_12](end_span)
 
-    # wireshark-common may (re)create the group; make sure retro is a member.
-    getent group wireshark >/dev/null || groupadd --system wireshark
-    usermod -aG wireshark "${RETRO_USER}"
+    # John The Ripper (ഡെബിയൻ ബുക്ക്‌വോമിൽ john, john-data ഉറപ്പാക്കുന്നു)
+    retro_apt_install_optional john john-data
+
+    # GUI സെക്യൂരിറ്റി & നെറ്റ്‌വർക്ക് ടൂളുകൾ
+    retro_apt_install_optional gufw etherape
+
+    # retro യൂസറെ wireshark ഗ്രൂപ്പിൽ ചേർക്കുന്നു
+    getent group wireshark >/dev/null || groupadd --system wireshark[span_13](start_span)[span_13](end_span)
+    usermod -aG wireshark "${RETRO_USER}[span_14](start_span)"[span_14](end_span)
 }
 
 # -----------------------------------------------------------------------------
