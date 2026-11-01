@@ -30,20 +30,24 @@ install_classic_tools() {
         nmap wireshark tshark aircrack-ng hydra nikto sqlmap wifite \
         tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
 
-    # John The Ripper
-    retro_apt_install_optional john john-data
+    # John The Ripper CLI & GUI (Johnny)
+    retro_apt_install_optional john john-data johnny
 
-    # /usr/sbin/john സാധാരണ യൂസർമാർക്കും ലഭ്യമാക്കാൻ /usr/local/bin-ലേക്ക് ലിങ്ക് ചെയ്യുന്നു
+    # Hydra GUI (XHydra) & Nmap GUI (NmapSI4) & Gufw Firewall
+    retro_apt_install_optional xhydra nmapsi4 gufw etherape
+
+    # /usr/sbin/john സിംലിങ്ക്
     if [[ -x /usr/sbin/john ]]; then
         ln -sf /usr/sbin/john /usr/local/bin/john
     fi
 
-    # GUI സെക്യൂരിറ്റി ടൂളുകൾ
-    retro_apt_install_optional gufw etherape
+    # Rockyou / Wordlists സജ്ജീകരണം
+    retro_info "Setting up security wordlists (rockyou)"
+    retro_apt_install_optional wordlists
+    if [[ -f /usr/share/wordlists/rockyou.txt.gz ]] && [[ ! -f /usr/share/wordlists/rockyou.txt ]]; then
+        gzip -dc /usr/share/wordlists/rockyou.txt.gz > /usr/share/wordlists/rockyou.txt || true
+    fi
 
-    retro_apt_install_optional xhydra johnny nmapsi4 gufw etherape
-
-    # Wireshark ഗ്രൂപ്പ് അനുമതി
     getent group wireshark >/dev/null || groupadd --system wireshark
     usermod -aG wireshark "${RETRO_USER}"
 }
