@@ -86,6 +86,7 @@ install_base_system() {
         xz-utils zstd bzip2 unzip zip \
         qrencode espeak-ng alsa-utils \
         python3 python3-yaml \
+        systemd-timesyncd tzdata \
         earlyoom libcap2-bin
 }
 
@@ -138,8 +139,10 @@ configure_locale_time() {
     locale-gen
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
 
-    ln -sf "/usr/share/zoneinfo/${RETRO_TIMEZONE}" /etc/localtime
-    printf '%s\n' "${RETRO_TIMEZONE}" > /etc/timezone
+    ln -sf "/usr/share/zoneinfo/${RETRO_TIMEZONE:-Asia/Kolkata}" /etc/localtime
+    printf '%s\n' "${RETRO_TIMEZONE:-Asia/Kolkata}" > /etc/timezone
+    
+    systemctl enable systemd-timesyncd.service 2>/dev/null || true
 
     retro_write /etc/default/keyboard 0644 <<EOF
 XKBMODEL="pc105"
