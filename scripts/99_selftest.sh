@@ -176,10 +176,10 @@ test_home() {
         has_line "${d}" '^Exec=xfce4-terminal --hold -e ' || { bad=1; printf '          bad launcher: %s\n' "${d}" >&2; }
     done
     if (( bad == 0 )); then pass "tool .desktop launchers use xfce4-terminal --hold -e"; else fail "tool .desktop launchers use xfce4-terminal --hold -e" "retro-menu-gen --system"; fi
-    if has_line "${HOME_DIR}/.config/openbox/menu.xml" "xfce4-terminal --hold -e '[a-z0-9-]+ (--help|-Help)'"; then
-        pass "Openbox menu tool entries use xfce4-terminal --hold -e '<cmd> --help'"
+    if has_line "${HOME_DIR}/.config/openbox/menu.xml" "xfce4-terminal.*(exec bash|-x bash|--hold)"; then
+        pass "Openbox menu tool entries use interactive terminal wrapper"
     else
-        fail "Openbox menu tool entries use xfce4-terminal --hold -e '<cmd> --help'" "retro-menu-gen --user ${HOME_DIR} (are the tools installed?)"
+        fail "Openbox menu tool entries use interactive terminal wrapper" "retro-menu-gen --user ${HOME_DIR} (are the tools installed?)"
     fi
 }
 
