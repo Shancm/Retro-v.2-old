@@ -61,14 +61,13 @@ rebuild_initramfs() {
     mkdir -p /etc/initramfs-tools/conf.d
     cat > /etc/initramfs-tools/conf.d/retro.conf <<'EOF'
 MODULES=most
-COMPRESS=zstd
+COMPRESS=gzip
 EOF
     cat >> /etc/initramfs-tools/modules <<'EOF'
 overlay
 squashfs
 loop
 EOF
-
     update-initramfs -u -k all
 }
 
