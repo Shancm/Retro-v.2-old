@@ -6,6 +6,7 @@
 #   * LightDM auto-login with explicit PAM stack (no black-screen login loop)
 #   * Windows 7-inspired theming (bottom panel, start orb, glass menu)
 #   * /etc/skel session files, helper scripts, dynamic menu generator
+#   * Multimedia apps (VLC, Evince, etc.)
 # =============================================================================
 set -Eeuo pipefail
 
@@ -42,11 +43,9 @@ install_graphical_stack() {
         network-manager-gnome volumeicon-alsa \
         policykit-1 policykit-1-gnome gvfs gvfs-backends udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
-        vlc ristretto evince galculator xarchiver p7zip-full unrar-free \
-        librsvg2-common fonts-dejavu-core fonts-jetbrains-mono
+        librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
+        vlc ristretto evince galculator p7zip-full unrar-free
 
-    # Hardware-specific X drivers: optional so a single missing package
-    # cannot abort the whole build.
     retro_apt_install_optional \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
         xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu
@@ -57,15 +56,11 @@ install_graphical_stack() {
 }
 
 # -----------------------------------------------------------------------------
-# 2. Branding assets (only created when the overlay did not provide them)
+# 2. Branding assets
 # -----------------------------------------------------------------------------
 install_branding_assets() {
     retro_info "Installing branding assets"
     mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps
-
-    if [[ ! -s "${WALLPAPER}" ]]; then
-        retro_warn "Wallpaper missing from overlay - 03/98 self-test will flag it (build.sh normally seeds a fallback)"
-    fi
 
     if [[ ! -s /usr/share/pixmaps/retro-start.svg ]]; then
         retro_write /usr/share/pixmaps/retro-start.svg 0644 <<'EOF'
@@ -104,14 +99,13 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 3. Templates + helper scripts shipped to /opt/retro-os
+# 3. Templates + helper scripts
 # -----------------------------------------------------------------------------
 write_templates() {
     retro_info "Writing LightDM / PAM templates"
     mkdir -p "${TEMPLATE_DIR}" "${RETRO_HELPER_DIR}" "${RETRO_ROOT}/menu.d"
 
     retro_write "${TEMPLATE_DIR}/lightdm.conf" 0644 <<EOF
-# Retro OS - LightDM auto-login (managed by retro-live-fixup)
 [LightDM]
 minimum-vt=7
 
@@ -129,7 +123,6 @@ EOF
 
     retro_write "${TEMPLATE_DIR}/lightdm-autologin.pam" 0644 <<'EOF'
 #%PAM-1.0
-# Retro OS: passwordless desktop login, restricted to the group "nopasswdlogin".
 auth      requisite pam_nologin.so
 auth      required  pam_succeed_if.so user != root quiet_success
 auth      required  pam_succeed_if.so user ingroup nopasswdlogin
@@ -171,17 +164,14 @@ install_login_stack() {
 }
 
 # -----------------------------------------------------------------------------
-# 4. Helper scripts (session start, live fix-up, menu generator)
+# 4. Helper scripts
 # -----------------------------------------------------------------------------
 write_session_start() {
     retro_write "${RETRO_HELPER_DIR}/retro-session-start" 0755 <<'EOF'
 #!/usr/bin/env bash
-# retro-session-start - launched from ~/.config/openbox/autostart.
-# Idempotent: every component is started only once per user session.
 set -u
 
 PROFILE_ENV="/run/retro-os/profile.env"
-# shellcheck source=/dev/null
 [[ -r "${PROFILE_ENV}" ]] && . "${PROFILE_ENV}"
 RETRO_TIER="${RETRO_TIER:-standard}"
 RETRO_PICOM="${RETRO_PICOM:-on}"
@@ -200,7 +190,6 @@ start_once() {
     "$@" &
 }
 
-# Per-user override: ~/.config/retro/compositor = on | off | auto
 want_picom="${RETRO_PICOM}"
 if [[ -r "${HOME}/.config/retro/compositor" ]]; then
     case "$(head -n1 "${HOME}/.config/retro/compositor" | tr -d '[:space:]')" in
@@ -212,10 +201,8 @@ fi
 xsetroot -solid '#0c0d12' 2>/dev/null || true
 xset b off 2>/dev/null || true
 
-# Polkit agent (needed by nm-applet, udisks, wireshark capture helpers)
 start_once polkit-gnome-au /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 
-# Desktop icons + wallpaper (wallpaper_mode=stretch, right-click -> Openbox menu)
 if command -v pcmanfm >/dev/null 2>&1; then
     start_once pcmanfm pcmanfm --desktop
 elif command -v feh >/dev/null 2>&1; then
@@ -223,7 +210,6 @@ elif command -v feh >/dev/null 2>&1; then
 fi
 sleep 1
 
-# Compositor policy comes from the hardware profile
 panel_cfg="${HOME}/.config/tint2/tint2rc"
 if [[ "${want_picom}" == "on" ]] && command -v picom >/dev/null 2>&1; then
     if ! running picom; then
@@ -241,12 +227,10 @@ sleep 0.5
 start_once nm-applet nm-applet
 start_once volumeicon volumeicon
 
-# Unmute ALSA so the first sound is audible (errors are harmless without audio)
 for ctl in Master Speaker Headphone PCM; do
     amixer -q sset "${ctl}" 80% unmute >/dev/null 2>&1 || true
 done
 
-# Installer boot entry: retro.install=1 on the kernel command line
 if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares >/dev/null 2>&1; then
     sudo -E calamares &
 fi
@@ -258,10 +242,6 @@ EOF
 write_live_fixup() {
     retro_write "${RETRO_HELPER_DIR}/retro-live-fixup" 0750 <<'EOF'
 #!/usr/bin/env bash
-# retro-live-fixup - re-asserts everything the login stack depends on, early in
-# every LIVE boot (after live-config, before LightDM). It is the safety net that
-# guarantees there is no black-screen / login-loop regardless of what
-# live-config or a previous session did.
 set -Eeuo pipefail
 
 TPL="/opt/retro-os/templates"
@@ -294,7 +274,6 @@ if [[ "${status}" != "P" ]]; then
 fi
 usermod --unlock "${USER_NAME}" 2>/dev/null || true
 
-# LightDM + PAM templates (rewrite only when they differ)
 sync_file() {
     local src="$1" dst="$2" mode="$3"
     [[ -r "${src}" ]] || return 0
@@ -309,7 +288,6 @@ sync_file "${TPL}/lightdm.conf"            /etc/lightdm/lightdm.conf.d/50-retro-
 sync_file "${TPL}/lightdm-autologin.pam"   /etc/pam.d/lightdm-autologin                    0644
 sync_file "${TPL}/Xwrapper.config"         /etc/X11/Xwrapper.config                        0644
 
-# Home directory hygiene: ownership + stale auth files that break X logins
 home="/home/${USER_NAME}"
 if [[ -d "${home}" ]]; then
     if [[ "$(stat -c %U:%G "${home}")" != "${USER_NAME}:${USER_NAME}" ]]; then
@@ -330,7 +308,7 @@ EOF
 
     retro_write /etc/systemd/system/retro-live-fixup.service 0644 <<'EOF'
 [Unit]
-Description=Retro OS live session login-stack guard (auto-login / PAM / groups)
+Description=Retro OS live session login-stack guard
 After=live-config.service local-fs.target
 Before=systemd-user-sessions.service display-manager.service lightdm.service
 ConditionKernelCommandLine=boot=live
@@ -349,7 +327,6 @@ EOF
 write_menu_tools() {
     retro_info "Installing menu generator + tool catalogue"
 
-    # Category|Label|Binary|Arguments|Icon|Type (GUI or CLI)
     retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
 Reconnaissance|Nmap|nmap|--help|utilities-terminal|CLI
 Reconnaissance|RustScan|rustscan|--help|utilities-terminal|CLI
@@ -614,241 +591,20 @@ main "$@"
 EOF
 }
 
-# --- Openbox menu.xml ---------------------------------------------------------
-ob_item() {
-    printf '  <item label="%s">\n    <action name="Execute">\n      <command>%s</command>\n    </action>\n  </item>\n' \
-        "$(xml_escape "$1")" "$(xml_escape "$2")"
-}
-
-build_openbox_menu() {
-    local cat entry label cmd icon cid=0
-    printf '<?xml version="1.0" encoding="UTF-8"?>\n'
-    printf '<!-- %s : edit %s/*.list then run `retro menu` -->\n' "${MARK}" "${LIST_DIR}"
-    printf '<openbox_menu xmlns="http://openbox.org/3.4/menu">\n'
-    printf '<menu id="root-menu" label="Retro OS">\n'
-    ob_item "Terminal" "xfce4-terminal"
-    ob_item "File Manager" "pcmanfm"
-    have firefox-esr && ob_item "Web Browser" "firefox-esr"
-    have mousepad && ob_item "Text Editor" "mousepad"
-    printf '  <separator/>\n'
-
-    if (( ${#CAT_ORDER[@]} > 0 )); then
-        printf '  <menu id="retro-security" label="Security Tools">\n'
-        for cat in "${CAT_ORDER[@]}"; do
-            cid=$(( cid + 1 ))
-            printf '  <menu id="retro-sec-%s" label="%s">\n' "${cid}" "$(xml_escape "${cat}")"
-            while IFS='|' read -r label cmd icon; do
-                [[ -n "${label}" ]] || continue
-                ob_item "${label}" "${TERM_HOLD} '${cmd}'"
-            done <<< "${CAT_ITEMS[${cat}]}"
-            printf '  </menu>\n'
-        done
-        have wireshark && ob_item "Wireshark (GUI)" "wireshark"
-        printf '  </menu>\n'
-    fi
-
-    printf '  <menu id="retro-system" label="Retro System">\n'
-    ob_item "Retro Boost (free RAM)" "${TERM_HOLD} 'retro boost'"
-    ob_item "Retro Doctor (repair)"  "${TERM_HOLD} 'retro doctor'"
-    ob_item "Retro Update"           "${TERM_HOLD} 'retro update'"
-    ob_item "Retro AI Companion"     "${TERM_PLAIN} 'retro ai'"
-    ob_item "System Monitor"         "${TERM_PLAIN} 'retro mon'"
-    ob_item "System Info"            "${TERM_HOLD} 'retro fetch'"
-    have lxtask && ob_item "Task Manager" "lxtask"
-    printf '  </menu>\n'
-
-    printf '  <menu id="retro-settings" label="Settings">\n'
-    have nm-connection-editor && ob_item "Network Connections" "nm-connection-editor"
-    have lxappearance && ob_item "Appearance" "lxappearance"
-    have obconf && ob_item "Openbox Configuration" "obconf"
-    printf '  <item label="Reload Openbox">\n    <action name="Reconfigure"/>\n  </item>\n'
-    printf '  </menu>\n'
-
-    printf '  <separator/>\n'
-    printf '  <menu id="client-list-combined-menu"/>\n'
-    have calamares && ob_item "Install Retro OS" "sudo -E calamares"
-    ob_item "Lock Screen" "dm-tool lock"
-    printf '  <menu id="retro-exit" label="Exit">\n'
-    printf '  <item label="Log Out">\n    <action name="Exit"/>\n  </item>\n'
-    ob_item "Reboot" "systemctl reboot"
-    ob_item "Shut Down" "systemctl poweroff"
-    printf '  </menu>\n'
-    printf '</menu>\n</openbox_menu>\n'
-}
-
-# --- jgmenu csv (Windows 7 style Start menu) ---------------------------------
-build_jgmenu_csv() {
-    local cat entry label cmd icon cid=0
-    {
-        echo "Terminal,xfce4-terminal,utilities-terminal"
-        echo "File Manager,pcmanfm,system-file-manager"
-        have firefox-esr && echo "Web Browser,firefox-esr,firefox-esr"
-        have mousepad && echo "Text Editor,mousepad,accessories-text-editor"
-        echo "^sep()"
-        if (( ${#CAT_ORDER[@]} > 0 )); then
-            echo "Security Tools,^checkout(retro-sec),security-high"
-        fi
-        echo "Retro System,^checkout(retro-sys),preferences-system"
-        echo "Settings,^checkout(retro-set),preferences-desktop"
-        echo "^sep()"
-        have calamares && echo "Install Retro OS,sudo -E calamares,system-software-install"
-        echo "Lock Screen,dm-tool lock,system-lock-screen"
-        echo "Exit,^checkout(retro-exit),system-shutdown"
-        echo
-        if (( ${#CAT_ORDER[@]} > 0 )); then
-            echo "^tag(retro-sec)"
-            for cat in "${CAT_ORDER[@]}"; do
-                cid=$(( cid + 1 ))
-                echo "${cat},^checkout(retro-sec-${cid}),folder"
-            done
-            have wireshark && echo "Wireshark (GUI),wireshark,wireshark"
-            echo
-            cid=0
-            for cat in "${CAT_ORDER[@]}"; do
-                cid=$(( cid + 1 ))
-                echo "^tag(retro-sec-${cid})"
-                while IFS='|' read -r label cmd icon; do
-                    [[ -n "${label}" ]] || continue
-                    echo "${label},${TERM_HOLD} \"${cmd}\",${icon}"
-                done <<< "${CAT_ITEMS[${cat}]}"
-                echo
-            done
-        fi
-        echo "^tag(retro-sys)"
-        echo "Retro Boost,${TERM_HOLD} \"retro boost\",utilities-system-monitor"
-        echo "Retro Doctor,${TERM_HOLD} \"retro doctor\",system-run"
-        echo "Retro Update,${TERM_HOLD} \"retro update\",system-software-update"
-        echo "Retro AI,${TERM_PLAIN} \"retro ai\",face-smile"
-        echo "System Monitor,${TERM_PLAIN} \"retro mon\",utilities-system-monitor"
-        echo "System Info,${TERM_HOLD} \"retro fetch\",computer"
-        echo
-        echo "^tag(retro-set)"
-        have nm-connection-editor && echo "Network Connections,nm-connection-editor,preferences-system-network"
-        have lxappearance && echo "Appearance,lxappearance,preferences-desktop-theme"
-        have obconf && echo "Openbox Configuration,obconf,preferences-system"
-        echo
-        echo "^tag(retro-exit)"
-        echo "Log Out,openbox --exit,system-log-out"
-        echo "Reboot,systemctl reboot,system-reboot"
-        echo "Shut Down,systemctl poweroff,system-shutdown"
-    }
-}
-
-# --- .desktop launchers ------------------------------------------------------
-write_desktop_files() {
-    local dir="${ROOT}/usr/share/applications" cat entry label cmd icon slug
-    mkdir -p "${dir}"
-    rm -f "${dir}"/retro-tool-*.desktop
-    for cat in "${CAT_ORDER[@]:-}"; do
-        [[ -n "${cat}" ]] || continue
-        while IFS='|' read -r label cmd icon; do
-            [[ -n "${label}" ]] || continue
-            slug="$(slugify "${label}")"
-            cat > "${dir}/retro-tool-${slug}.desktop" <<EOT
-[Desktop Entry]
-Type=Application
-Name=${label}
-Comment=Retro OS security tool (${cat}): ${cmd}
-Exec=${TERM_HOLD} "${cmd}"
-Icon=${icon}
-Terminal=false
-Categories=System;Security;
-X-Retro-Group=${cat}
-EOT
-            chmod 0644 "${dir}/retro-tool-${slug}.desktop"
-        done <<< "${CAT_ITEMS[${cat}]}"
-    done
-}
-
-# --- writers -----------------------------------------------------------------
-atomic_write() {
-    local dest="$1" tmp
-    mkdir -p "$(dirname "${dest}")"
-    tmp="$(mktemp "${dest}.XXXXXX")"
-    cat > "${tmp}"
-    chmod 0644 "${tmp}"
-    mv -f "${tmp}" "${dest}"
-}
-
-write_menus_to() {
-    local base="$1" mode="$2"       # mode: skel | user
-    local ob="${base}/.config/openbox/menu.xml"
-    local csv="${base}/.config/jgmenu/retro-menu.csv"
-
-    if [[ "${mode}" == "user" && -s "${ob}" ]] && ! grep -q "${MARK}" "${ob}"; then
-        build_openbox_menu | atomic_write "${ob}.retro-new"
-        warn "custom ${ob} detected - left untouched; new menu written to ${ob}.retro-new"
-    else
-        if [[ "${mode}" == "user" && -s "${ob}" ]]; then
-            cp -a "${ob}" "${ob}.bak-$(date +%Y%m%d-%H%M%S)"
-            # keep only the 3 newest backups
-            # shellcheck disable=SC2012
-            ls -1t "${ob}".bak-* 2>/dev/null | tail -n +4 | xargs -r rm -f
-        fi
-        build_openbox_menu | atomic_write "${ob}"
-    fi
-    build_jgmenu_csv | atomic_write "${csv}"
-}
-
-main() {
-    local action="${1:-}"
-    case "${action}" in
-        --system)
-            load_entries
-            write_desktop_files
-            write_menus_to "${ROOT}/etc/skel" skel
-            echo "retro-menu-gen: system menus regenerated (${#CAT_ORDER[@]} categories)"
-            ;;
-        --user)
-            local home="${2:-${HOME}}"
-            [[ -d "${home}" ]] || die "no such home directory: ${home}"
-            load_entries
-            write_menus_to "${home}" user
-            if [[ "$(id -u)" -eq 0 ]]; then
-                local owner
-                owner="$(stat -c %U:%G "${home}")"
-                chown -R "${owner}" "${home}/.config/openbox" "${home}/.config/jgmenu" 2>/dev/null || true
-            fi
-            echo "retro-menu-gen: menus regenerated for ${home}"
-            ;;
-        --list)
-            load_entries
-            local cat
-            for cat in "${CAT_ORDER[@]:-}"; do
-                [[ -n "${cat}" ]] || continue
-                echo "[${cat}]"
-                while IFS='|' read -r label cmd icon; do
-                    [[ -n "${label}" ]] && echo "  ${label}  ->  ${cmd}"
-                done <<< "${CAT_ITEMS[${cat}]}"
-            done
-            ;;
-        *)
-            echo "usage: retro-menu-gen {--system | --user [HOME] | --list}" >&2
-            exit 2
-            ;;
-    esac
-}
-
-main "$@"
-EOF
-}
-
 # -----------------------------------------------------------------------------
-# 5. Skeleton: session entry points + Openbox + Tint2 + jgmenu + Picom + PCManFM
+# 5. Skeleton: session entry points
 # -----------------------------------------------------------------------------
 write_skel_session() {
     retro_info "Populating ${SKEL} (.xsession, .xinitrc, Openbox)"
     for f in .xsession .xinitrc; do
         retro_write "${SKEL}/${f}" 0755 <<'EOF'
 #!/bin/sh
-# Retro OS - X session entry point
 exec openbox-session
 EOF
     done
 
     mkdir -p "${SKEL}/.config/openbox"
     retro_write "${SKEL}/.config/openbox/autostart" 0755 <<EOF
-# Retro OS Openbox autostart (the real work lives in the helper script)
 ${RETRO_HELPER_DIR}/retro-session-start &
 EOF
     retro_write "${SKEL}/.config/openbox/environment" 0644 <<'EOF'
@@ -857,9 +613,7 @@ export _JAVA_AWT_WM_NONREPARENTING=1
 export MOZ_USE_XINPUT2=1
 EOF
 
-    # Derive rc.xml from Debian's default (it carries the complete mouse/button
-    # bindings Openbox needs) and patch in theme + Retro key bindings.
-    [[ -r /etc/xdg/openbox/rc.xml ]] || retro_die "/etc/xdg/openbox/rc.xml missing - is the openbox package installed?"
+    [[ -r /etc/xdg/openbox/rc.xml ]] || retro_die "/etc/xdg/openbox/rc.xml missing"
     cp /etc/xdg/openbox/rc.xml "${SKEL}/.config/openbox/rc.xml"
     RC_PATH="${SKEL}/.config/openbox/rc.xml" RETRO_GTK_THEME="${RETRO_GTK_THEME}" python3 - <<'PY'
 import os, re, sys
@@ -907,87 +661,41 @@ write_skel_tint2() {
     retro_info "Writing Tint2 panel (Windows 7 style)"
     mkdir -p "${SKEL}/.config/tint2"
     retro_write "${SKEL}/.config/tint2/tint2rc" 0644 <<EOF
-# Retro OS - Tint2 panel (bottom, Start orb + taskbar + tray + clock)
-
-# Background 1: panel
 rounded = 0
 border_width = 1
 border_sides = T
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #0c0d12 100
 border_color = #00ff9c 45
-background_color_hover = #0c0d12 100
-border_color_hover = #00ff9c 45
-background_color_pressed = #0c0d12 100
-border_color_pressed = #00ff9c 45
 
-# Background 2: task (normal)
 rounded = 3
 border_width = 1
 border_sides = TBLR
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #1b1d27 100
 border_color = #2b2f3d 100
-background_color_hover = #262a38 100
-border_color_hover = #00ff9c 60
-background_color_pressed = #2b3040 100
-border_color_pressed = #00ff9c 80
 
-# Background 3: task (active)
 rounded = 3
 border_width = 1
 border_sides = TBLR
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #1f3d33 100
 border_color = #00ff9c 90
-background_color_hover = #25503f 100
-border_color_hover = #00ff9c 100
-background_color_pressed = #25503f 100
-border_color_pressed = #00ff9c 100
 
-# Background 4: task (urgent)
 rounded = 3
 border_width = 1
 border_sides = TBLR
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #3a1220 100
 border_color = #ff0055 100
-background_color_hover = #4a1628 100
-border_color_hover = #ff0055 100
-background_color_pressed = #4a1628 100
-border_color_pressed = #ff0055 100
 
-# Background 5: tooltip
 rounded = 2
 border_width = 1
 border_sides = TBLR
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #0c0d12 100
 border_color = #00ff9c 60
-background_color_hover = #0c0d12 100
-border_color_hover = #00ff9c 60
-background_color_pressed = #0c0d12 100
-border_color_pressed = #00ff9c 60
 
-# Background 6: start orb glow
 rounded = 20
 border_width = 0
-border_sides = TBLR
-border_content_tint_weight = 0
-background_content_tint_weight = 0
 background_color = #00ff9c 0
 border_color = #00ff9c 0
-background_color_hover = #00ff9c 28
-border_color_hover = #00ff9c 0
-background_color_pressed = #00ff9c 48
-border_color_pressed = #00ff9c 0
 
-# Panel
 panel_items = LTSC
 panel_size = 100% 40
 panel_margin = 0 0
@@ -1005,7 +713,6 @@ panel_window_name = tint2
 disable_transparency = 1
 mouse_effects = 0
 
-# Launcher (Start orb first, then quick launchers)
 launcher_padding = 4 2 8
 launcher_background_id = 0
 launcher_icon_background_id = 6
@@ -1020,7 +727,6 @@ launcher_item_app = /usr/share/applications/pcmanfm.desktop
 launcher_item_app = /usr/share/applications/xfce4-terminal.desktop
 launcher_item_app = /usr/share/applications/firefox-esr.desktop
 
-# Taskbar
 taskbar_mode = single_desktop
 taskbar_hide_if_empty = 0
 taskbar_padding = 2 2 2
@@ -1035,7 +741,6 @@ taskbar_distribute_size = 1
 taskbar_sort_order = none
 task_align = left
 
-# Tasks
 task_text = 1
 task_icon = 1
 task_centered = 0
@@ -1063,7 +768,6 @@ mouse_right = close
 mouse_scroll_up = toggle
 mouse_scroll_down = iconify
 
-# System tray (nm-applet, volumeicon)
 systray_padding = 4 2 3
 systray_background_id = 0
 systray_sort = ascending
@@ -1072,7 +776,6 @@ systray_icon_asb = 100 0 0
 systray_monitor = 1
 systray_name_filter =
 
-# Clock
 time1_format = %H:%M
 time1_font = ${RETRO_UI_FONT} Bold 10
 time2_format = %d-%m-%Y
@@ -1084,7 +787,6 @@ clock_tooltip = %A, %d %B %Y
 clock_lclick_command =
 clock_rclick_command =
 
-# Tooltip
 tooltip_show_timeout = 0.5
 tooltip_hide_timeout = 0.1
 tooltip_padding = 6 4
@@ -1093,7 +795,6 @@ tooltip_font_color = #e0e0e0 100
 tooltip_font = ${RETRO_UI_FONT} 9
 EOF
 
-    # Glass variant used automatically when Picom (standard tier) is running
     sed -e 's/^disable_transparency = 1/disable_transparency = 0/' \
         -e 's/^background_color = #0c0d12 100/background_color = #0c0d12 82/' \
         "${SKEL}/.config/tint2/tint2rc" > "${SKEL}/.config/tint2/tint2rc.glass"
@@ -1105,7 +806,6 @@ write_skel_jgmenu_picom_pcmanfm() {
 
     mkdir -p "${SKEL}/.config/jgmenu"
     retro_write "${SKEL}/.config/jgmenu/jgmenurc" 0644 <<EOF
-# Retro OS Start menu (Windows 7 inspired: anchored bottom-left above the panel)
 stay_alive = 1
 tint2_look = 0
 csv_cmd = ${RETRO_HELPER_DIR}/retro-jgmenu-csv
@@ -1146,7 +846,6 @@ EOF
 
     mkdir -p "${SKEL}/.config/picom"
     retro_write "${SKEL}/.config/picom/picom.conf" 0644 <<'EOF'
-# Retro OS - Picom, standard tier only (subtle transparency, no shadows/fades)
 backend = "xrender";
 vsync = false;
 shadow = false;
@@ -1247,10 +946,7 @@ ColorCursor=${RETRO_ACCENT_COLOR}
 ColorPalette=#1b1d27;#ff0055;#00ff9c;#ffd166;#4cc9f0;#b388ff;#2ec4b6;#e0e0e0;#3a3f52;#ff4d88;#5affc0;#ffe199;#8be0ff;#d0b3ff;#6ee7d8;#ffffff
 EOF
 
-    # Shell prompt / aliases (interactive shells only)
     cat >> "${SKEL}/.bashrc" <<'EOF'
-
-# --- Retro OS -----------------------------------------------------------------
 case $- in
     *i*)
         export PATH="${PATH}:/usr/local/sbin:/usr/sbin:/sbin"
@@ -1276,12 +972,11 @@ EOF
 }
 
 generate_menus() {
-    retro_info "Generating Openbox / jgmenu menus + tool launchers (skeleton)"
+    retro_info "Generating Openbox / jgmenu menus + tool launchers"
     "${RETRO_HELPER_DIR}/retro-menu-gen" --system
 }
 
 normalise_skel_permissions() {
-    # Skeleton must be readable by everyone and writable only by root.
     chown -R root:root "${SKEL}"
     find "${SKEL}" -type d -exec chmod 0755 {} +
     find "${SKEL}" -type f ! -perm /111 -exec chmod 0644 {} +
