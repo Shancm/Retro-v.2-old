@@ -615,7 +615,7 @@ build_squashfs() {
     # The kernel/initrd stay inside the squashfs on purpose: the Calamares
     # installer copies the squashfs to disk and the target needs /boot/vmlinuz.
     mksquashfs "${CHROOT_DIR}" "${IMAGE_DIR}/live/filesystem.squashfs" \
-        -noappend -comp zstd -Xcompression-level "${SQUASHFS_ZSTD_LEVEL}" -b 1M \
+        -noappend -comp zstd -Xcompression-level "${SQUASHFS_ZSTD_LEVEL}" -b 256k \
         -processors "$(nproc)" -no-progress \
         -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'run/*' 'tmp/*' 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${IMAGE_DIR}/live/filesystem.squashfs" ]] || retro_die "mksquashfs produced no output"
