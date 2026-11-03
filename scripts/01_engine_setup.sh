@@ -440,6 +440,7 @@ cmd="${1:-apply}"
 case "${cmd}" in
     apply|start)
         detect
+        log "tier=${TIER} (${REASON}) ram=${RAM_MB}MiB cpus=${CPUS} compositor=labwc"
         apply_zram
         apply_sysctl
         apply_earlyoom
