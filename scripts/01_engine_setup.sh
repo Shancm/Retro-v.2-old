@@ -224,6 +224,11 @@ create_user_and_groups() {
             --groups "${RETRO_USER_GROUPS}" "${RETRO_USER}"
     fi
 
+    # Remove memberships left by an older insecure build when resuming a chroot.
+    for g in autologin nopasswdlogin; do
+        gpasswd -d "${RETRO_USER}" "${g}" >/dev/null 2>&1 || true
+    done
+
     # Never bake credentials into the image. Both accounts remain locked
     # until the live-only credential service provisions a random live password.
     passwd --lock "${RETRO_USER}"
