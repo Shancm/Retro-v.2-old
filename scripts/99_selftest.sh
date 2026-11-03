@@ -42,7 +42,7 @@ udev_goto_targets_valid() {
         while IFS= read -r target; do
             [[ -n "${target}" ]] || continue
             grep -Fq "LABEL=\"${target}\"" "${rule}" || return 1
-        done < <(sed -n 's/.*GOTO="\\([^"]*\\)".*/\\1/p' "${rule}")
+        done < <(grep -o 'GOTO="[^"]*"' "${rule}" | cut -d'"' -f2)
     done
     return 0
 }
