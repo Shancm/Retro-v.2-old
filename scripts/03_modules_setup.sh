@@ -159,28 +159,38 @@ pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
     return 1
 }
 
-verify_checksum() {   # file asset listing repo -> verified | unverified | MISMATCH
-    local file="$1" asset="$2" listing="$3" repo="$4" sums_url sums want got
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "unverified"; return 0
-    fi
-    local gh_version
+verify_checksum() {   # file asset listing repo -> verified | verified-attested | unverified | MISMATCH
+    local file="$1" asset="$2" listing="$3" repo="$4" sums_url sums want got gh_version
+    if ! command -v gh >/dev/null 2>&1; then echo "unverified"; return 0; fi
     gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
-    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+    if [[ -z "\${gh_version}" ]] || ! dpkg --compare-versions "\${gh_version}" ge 2.67.0; then
         echo "unverified"; return 0
     fi
-    # Verify signed provenance against the exact expected source repository.
-    # A checksum file beside the asset is not publisher authentication.
-    if ! gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
+    # The artifact attestation is the publisher/provenance trust root.
+    if ! gh attestation verify "\${file}" --repo "\${repo}" >/dev/null 2>&1; then
         echo "unverified"; return 0
     fi
-    sums_url="$(tail -n +2 "${listing}" | awk -F'\t' 'tolower($1) ~ /(checksums?\.txt|sha256sums?(\.txt)?)$/ {print $2; exit}')"
-    if [[ -z "${sums_url}" ]]; then echo "unverified"; return 0; fi
-    sums="$(curl_dl "${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
-    want="$(awk -v a="${asset}" '$2 == a || $2 == "*" a {print $1; exit}' <<< "${sums}")"
-    if [[ ! "${want}" =~ ^[[:xdigit:]]{64}$ ]]; then echo "unverified"; return 0; fi
-    got="$(sha256sum "${file}" | awk '{print $1}')"
-    if [[ "${want,,}" == "${got}" ]]; then echo "verified"; else echo "MISMATCH"; fi
+    # Validate a release checksum manifest too, when the publisher provides one.
+    sums_url="$(tail -n +2 "\${listing}" | awk -F'\\t' '
+        tolower($1) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
+            print $2; exit
+        }')"
+    if [[ -z "\${sums_url}" ]]; then echo "verified-attested"; return 0; fi
+    sums="$(curl_dl "\${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
+    want="$(printf '%s\\n' "\${sums}" | python3 -c '
+import os,re,sys
+asset=os.path.basename(sys.argv[1])
+for line in sys.stdin:
+ m=re.match(r"^\\s*([0-9a-fA-F]{64})\\s+[* ]?(.+?)\\s*$",line)
+ if m and os.path.basename(m.group(2))==asset:
+  print(m.group(1).lower()); break
+ m=re.match(r"^\\s*SHA256\\s*\\((.+?)\\)\\s*=\\s*([0-9a-fA-F]{64})\\s*$",line,re.I)
+ if m and os.path.basename(m.group(1))==asset:
+  print(m.group(2).lower()); break
+' "\${asset}")"
+    if [[ -z "\${want}" ]]; then echo "unverified"; return 0; fi
+    got="$(sha256sum "\${file}" | awk '{print $1}')"
+    if [[ "\${want}" == "\${got}" ]]; then echo "verified"; else echo "MISMATCH"; fi
 }
 
 is_elf() {
@@ -240,12 +250,20 @@ stage_tool() {
         fi
     fi
 
-    if [[ -z "${asset_url}" ]]; then
-        asset_name="${PIN_ASSET//@V@/${PIN}}"
-        tag="${TAG_PREFIX}${PIN}"
-        asset_url="https://github.com/${REPO}/releases/download/${tag}/${asset_name}"
+    if [[ -z "\${asset_url}" ]]; then
+        asset_name="\${PIN_ASSET//@V@/\${PIN}}"
+        tag="\${TAG_PREFIX}\${PIN}"
+        asset_url="https://github.com/\${REPO}/releases/download/\${tag}/\${asset_name}"
         used="pinned-direct"
-        warn "${name}: falling back to direct pinned URL"
+        warn "\${name}: falling back to direct pinned URL"
+        # Load the pinned release's own asset/checksum listing.
+        if gh_release_json "\${REPO}" "\${tag}" "\${json}" 2>/dev/null; then
+            parse_release "\${json}" > "\${listing}" || true
+            pinned_tag="$(head -n1 "\${listing}")"
+            [[ -n "\${pinned_tag}" ]] && tag="\${pinned_tag}"
+        else
+            : > "\${listing}"
+        fi
     fi
 
     log "${name}: ${tag} (${used}) <- ${asset_name}"
