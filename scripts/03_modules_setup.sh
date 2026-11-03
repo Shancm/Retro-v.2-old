@@ -409,7 +409,7 @@ if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | s
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
 mark XORG_RUNNING "$(yn pgrep -x Xorg)"
-mark LIGHTDM_GREETER "$(yn pgrep -x lightdm-gtk-greeter)"
+mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
 for p in openbox tint2 pcmanfm nm-applet volumeicon; do
     mark "PROC_${p//-/_}" "$(yn pgrep -u retro -x "${p}")"
 done
