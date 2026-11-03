@@ -790,7 +790,7 @@ configfile /boot/grub/grub.cfg
 EOF
 
     grub-mkstandalone --format=x86_64-efi --output="${work}/bootx64.efi" \
-        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file" \
+        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file linux all_video" \
         --locales="" --fonts="" "boot/grub/grub.cfg=${work}/embedded.cfg" 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${work}/bootx64.efi" ]] || retro_die "grub-mkstandalone produced no bootx64.efi"
 
