@@ -494,7 +494,7 @@ INTENTS = [
 
 class Companion(cmd.Cmd):
     intro = ""
-    prompt = "\\001%s\\002retro-ai>\\001%s\\002 " % (C["mint"], C["rst"])
+    prompt = "\001%s\002retro-ai>\001%s\002 " % (C["mint"], C["rst"])
 
     def __init__(self) -> None:
         super().__init__()
