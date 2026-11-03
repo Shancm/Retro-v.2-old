@@ -387,11 +387,11 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     fi
 
     printf '\n%s  Supporting checks (advisory)%s\n' "${T_D}" "${T_0}"
-    local exp_picom="expected-stopped" exp_proc="no"
-    [[ "${tier}" == "standard" ]] && { exp_picom="expected-running"; exp_proc="yes"; }
-    adv_check "LightDM active"        "LIGHTDM_ACTIVE=${KV[LIGHTDM_ACTIVE]:-n/a}" "active" "$([[ "${KV[LIGHTDM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
-    adv_check "Xorg running"          "XORG_RUNNING=${KV[XORG_RUNNING]:-n/a}"     "yes"    "$([[ "${KV[XORG_RUNNING]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Xorg (EE) errors"      "XORG_ERRORS=${KV[XORG_ERRORS]:-n/a}"       "0"      "$([[ "${KV[XORG_ERRORS]:-x}" == "0" ]] && echo 1 || echo 0)"
+    adv_check "Labwc compositor"       "LABWC_RUNNING=${KV[LABWC_RUNNING]:-n/a}" "yes" "$([[ "${KV[LABWC_RUNNING]:-}" == "yes" ]] && echo 1 || echo 0)"
+    adv_check "Waybar panel"            "WAYBAR_RUNNING=${KV[WAYBAR_RUNNING]:-n/a}" "yes" "$([[ "${KV[WAYBAR_RUNNING]:-}" == "yes" ]] && echo 1 || echo 0)"
+    adv_check "Wayland socket"          "WAYLAND_SOCKET=${KV[WAYLAND_SOCKET]:-n/a}" "yes" "$([[ "${KV[WAYLAND_SOCKET]:-}" == "yes" ]] && echo 1 || echo 0)"
+    adv_check "Foot terminal installed" "FOOT_INSTALLED=${KV[FOOT_INSTALLED]:-n/a}" "yes" "$([[ "${KV[FOOT_INSTALLED]:-}" == "yes" ]] && echo 1 || echo 0)"
+    adv_check "Wofi launcher installed" "WOFI_INSTALLED=${KV[WOFI_INSTALLED]:-n/a}" "yes" "$([[ "${KV[WOFI_INSTALLED]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Desktop (pcmanfm)"     "PROC_pcmanfm=${KV[PROC_pcmanfm]:-n/a}"     "yes"    "$([[ "${KV[PROC_pcmanfm]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Tray: nm-applet"       "PROC_nm_applet=${KV[PROC_nm_applet]:-n/a}" "yes"    "$([[ "${KV[PROC_nm_applet]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Tray: volumeicon"      "PROC_volumeicon=${KV[PROC_volumeicon]:-n/a}" "yes"  "$([[ "${KV[PROC_volumeicon]:-}" == "yes" ]] && echo 1 || echo 0)"
