@@ -3,7 +3,7 @@
 # Retro OS v2.0 - 02_interface_setup.sh
 # Debian Trixie X11 desktop: Openbox + Tint2 + LXTerminal + jgmenu.
 # LightDM/Xorg is retained only for the graphical login greeter; user sessions
-# run on X11, with Xwayland for legacy X11 applications.
+# sessions run directly on Xorg.
 # =============================================================================
 set -Eeuo pipefail
 
@@ -126,46 +126,6 @@ install_login_stack() {
     echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
     systemctl enable lightdm.service
     systemctl set-default graphical.target
-}
-
-write_session_start() {
-    retro_info "Writing X11 session startup helper"
-    retro_write "${RETRO_HELPER_DIR}/retro-session-start" 0755 <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}"
-mkdir -p "${CACHE_DIR}"
-exec >>"${CACHE_DIR}/retro-session.log" 2>&1
-echo "=== Retro OS X11 session $(date '+%F %T') ==="
-pcmanfm --desktop &
-tint2 &
-nm-applet &
-blueman-applet &
-volumeicon &
-if [[ -x /usr/libexec/polkit-mate-authentication-agent-1 ]]; then
-    /usr/libexec/polkit-mate-authentication-agent-1 &
-fi
-if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares >/dev/null 2>&1; then
-    pkexec calamares &
-fi
-EOF
-}
-
-start_once swaybg swaybg -i /usr/share/backgrounds/retro-os/wallpaper.png -m fill
-sleep 0.3
-start_once tint2 tint2
-start_once mako mako
-start_once polkit-mate-authentication-agent-1 /usr/libexec/polkit-mate-authentication-agent-1
-start_once nm-applet nm-applet --indicator
-start_once volumeicon volumeicon
-start_once blueman-applet blueman-applet
-start_once parcellite parcellite
-start_once cbatticon cbatticon -u 5
-
-if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares >/dev/null 2>&1; then
-    pkexec calamares &
-fi
-EOF
 }
 
 write_live_fixup() {
@@ -444,6 +404,7 @@ EOF
 
     retro_write /etc/skel/.config/openbox/autostart 0755 <<'EOF'
 #!/bin/sh
+feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png &
 pcmanfm --desktop &
 tint2 &
 nm-applet &
@@ -520,6 +481,19 @@ mouse_middle = none
 mouse_right = none
 mouse_scroll_up = toggle
 mouse_scroll_down = iconify
+# Panel background definitions (IDs 1, 2 and 3)
+rounded = 0
+border_width = 1
+background_color = #1b1d27 94
+border_color = #3a3f52 100
+rounded = 2
+border_width = 1
+background_color = #2c3448 100
+border_color = #00ff9c 100
+rounded = 2
+border_width = 1
+background_color = #ff0055 100
+border_color = #ff0055 100
 EOF
 
     retro_write /etc/skel/.config/jgmenu/jgmenurc 0644 <<'EOF'
@@ -605,7 +579,6 @@ main() {
     install_branding_assets
     write_templates
     install_login_stack
-    write_session_start
     write_live_fixup
     write_menu_tools
     write_skel_session
