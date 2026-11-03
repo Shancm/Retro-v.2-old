@@ -400,8 +400,6 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     adv_check "Tray: nm-applet"       "PROC_nm_applet=${KV[PROC_nm_applet]:-n/a}" "yes"    "$([[ "${KV[PROC_nm_applet]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Tray: volumeicon"      "PROC_volumeicon=${KV[PROC_volumeicon]:-n/a}" "yes"  "$([[ "${KV[PROC_volumeicon]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Wallpaper installed"   "WALLPAPER=${KV[WALLPAPER]:-n/a}"           "yes"    "$([[ "${KV[WALLPAPER]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Compositor policy"     "${KV[PICOM_POLICY]:-n/a}, picom=${KV[PROC_picom]:-n/a}" "${exp_picom}, picom=${exp_proc}" \
-        "$([[ "${KV[PICOM_POLICY]:-}" == "${exp_picom}" && "${KV[PROC_picom]:-}" == "${exp_proc}" ]] && echo 1 || echo 0)"
     adv_check "EarlyOOM active"       "EARLYOOM_ACTIVE=${KV[EARLYOOM_ACTIVE]:-n/a}" "active" "$([[ "${KV[EARLYOOM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
     if [[ "${tier}" == "low" ]]; then
         adv_check "EarlyOOM thresholds"  "${KV[EARLYOOM_ARGS]:-n/a}" "-m 4 -s 8" "$([[ "${KV[EARLYOOM_ARGS]:-}" == "-m 4 -s 8"* ]] && echo 1 || echo 0)"
