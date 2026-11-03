@@ -102,7 +102,7 @@ tool_meta() {
     case "$1" in
         rustscan)
             REPO="bee-san/RustScan"; BIN="rustscan"; PIN="${RETRO_PIN_RUSTSCAN:-2.3.0}"; TAG_PREFIX=""
-            ASSET_RES='(_amd64\\.deb$|x86_64-linux.*\\.(zip|tar\\.gz|tar\\.gz\\.zip)$|linux.*(x86_64|amd64).*\\.(zip|tar\\.gz|deb)$)'
+            ASSET_RES='(_amd64\.deb$|x86_64-linux.*\.(zip|tar\.gz|tar\.gz\.zip)$|linux.*(x86_64|amd64).*\.(zip|tar\.gz|deb)$)'
             PIN_ASSET='rustscan_@V@_amd64.deb' ;;
         ffuf)
             REPO="ffuf/ffuf"; BIN="ffuf"; PIN="${RETRO_PIN_FFUF:-2.1.0}"; TAG_PREFIX="v"
