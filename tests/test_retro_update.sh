@@ -9,7 +9,7 @@ trap 'rm -rf "${TMP}"' EXIT
 say() { :; }
 ok() { :; }
 warn() { :; }
-die() { printf 'unexpected die: %s\\n' "$*" >&2; return 1; }
+die() { printf 'unexpected die: %s\n' "$*" >&2; return 1; }
 
 # Load only the update function so tests never dispatch the production CLI.
 eval "$(sed -n '/^update_scripts() {/,/^cmd_update() {/p' "${CLI}" | sed '$d')"
@@ -20,10 +20,10 @@ report() {
     local name="$1" status="$2"
     if [[ "${status}" == pass ]]; then
         PASS=$((PASS + 1))
-        printf 'PASS %s\\n' "${name}"
+        printf 'PASS %s\n' "${name}"
     else
         FAIL=$((FAIL + 1))
-        printf 'FAIL %s\\n' "${name}" >&2
+        printf 'FAIL %s\n' "${name}" >&2
     fi
 }
 
@@ -51,10 +51,10 @@ with tarfile.open(archive, "w:gz") as tf:
         tf.addfile(item, io.BytesIO(data))
 
     if kind == "valid":
-        add_file("usr/local/bin/retro", "#!/usr/bin/env bash\\necho updated\\n")
-        add_file("opt/retro-ai/retro_ai.py", "print('updated')\\n")
+        add_file("usr/local/bin/retro", "#!/usr/bin/env bash\necho updated\n")
+        add_file("opt/retro-ai/retro_ai.py", "print('updated')\n")
     elif kind == "absolute":
-        add_file("/usr/local/bin/retro", "#!/bin/bash\\n")
+        add_file("/usr/local/bin/retro", "#!/bin/bash\n")
     elif kind == "traversal":
         add_file("opt/retro-os/../../tmp/evil", "bad")
     elif kind == "symlink":
@@ -77,9 +77,9 @@ with tarfile.open(archive, "w:gz") as tf:
     elif kind == "outside":
         add_file("etc/passwd", "bad")
     elif kind == "bad-bash":
-        add_file("usr/local/bin/retro", "#!/bin/bash\\nif then\\n")
+        add_file("usr/local/bin/retro", "#!/bin/bash\nif then\n")
     elif kind == "bad-python":
-        add_file("opt/retro-ai/retro_ai.py", "def broken(:\\n")
+        add_file("opt/retro-ai/retro_ai.py", "def broken(:\n")
     else:
         raise SystemExit("unknown archive kind")
 PY
@@ -123,7 +123,7 @@ if run_update; then report "missing checksum rejected" fail; else report "missin
 # 3: a mismatched checksum is rejected.
 make_case
 make_archive valid
-printf '%064d  update.tar.gz\\n' 0 > "${ARCHIVE}.sha256"
+printf '%064d  update.tar.gz\n' 0 > "${ARCHIVE}.sha256"
 if run_update; then report "checksum mismatch rejected" fail; else report "checksum mismatch rejected" pass; fi
 
 # 4: a corrupt gzip stream is rejected even with a matching digest.
@@ -142,5 +142,5 @@ expect_reject "path outside allow-list rejected" outside
 expect_reject "invalid Bash source rejected" bad-bash
 expect_reject "invalid Python source rejected" bad-python
 
-printf '\nRetro update tests: %d passed, %d failed\\n' "${PASS}" "${FAIL}"
+printf '\nRetro update tests: %d passed, %d failed\n' "${PASS}" "${FAIL}"
 (( FAIL == 0 ))
