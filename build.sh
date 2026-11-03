@@ -113,7 +113,7 @@ unmount_chroot() {
     local attempt mp
     [[ -d "${CHROOT_DIR}" ]] || return 0
     kill_chroot_processes
-    for attempt in 1 2 3; do
+    for _ in 1 2 3; do
         [[ -n "$(chroot_mounts)" ]] || return 0
         while IFS= read -r mp; do
             umount "${mp}" 2>/dev/null || true
