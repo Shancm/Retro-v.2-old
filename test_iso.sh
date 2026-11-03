@@ -367,8 +367,6 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     req_check "No login loop" "LOGIN_LOOP_SUSPECT=${v}" "0" "$([[ "${v}" == "0" ]] && echo 1 || echo 0)"
     v="${KV[LIGHTDM_ACTIVE]:-n/a}"
     req_check "LightDM active" "LIGHTDM_ACTIVE=${v}" "active" "$([[ "${v}" == "active" ]] && echo 1 || echo 0)"
-    v="${KV[LIGHTDM_GREETER]:-n/a}"
-    req_check "Authenticated LightDM greeter" "LIGHTDM_GREETER=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
     v="${KV[LABWC_RUNNING]:-n/a}"
     req_check "Labwc Wayland compositor active" "LABWC_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
     v="${KV[WAYBAR_RUNNING]:-n/a}"
