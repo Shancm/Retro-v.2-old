@@ -271,7 +271,7 @@ test_payload() {
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
     done
-    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/lib/mate-polkit/polkit-mate-authentication-agent-1
+    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/libexec/polkit-mate-authentication-agent-1
     check "polkit daemon installed" "install the polkitd package" test -x /usr/lib/polkit-1/polkitd
     for b in rustscan ffuf httpx naabu; do
         if command -v "${b}" >/dev/null 2>&1; then
