@@ -35,7 +35,7 @@ install_graphical_stack() {
         wl-clipboard grim slurp \
         pcmanfm mousepad lxtask lxappearance \
         network-manager-gnome volumeicon-alsa \
-        policykit-1 mate-polkit udisks2 \
+        pkexec polkitd mate-polkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
