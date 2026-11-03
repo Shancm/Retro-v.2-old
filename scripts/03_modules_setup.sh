@@ -351,8 +351,10 @@ EOF
 
 stage_modern_tools() {
     retro_info "Staging optional Go/Rust tools (RustScan, ffuf, httpx, naabu)"
+    # The fetcher exits 0 when optional tools are unavailable/unverified, but
+    # exits non-zero on a proven SHA-256 mismatch. Do not mask that security failure.
     if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" --all; then
-        retro_warn "One or more optional tools were skipped; continuing core OS assembly"
+        retro_die "Modern tool integrity verification failed (SHA-256 mismatch); refusing to continue the build"
     fi
     cat "${RETRO_ETC_DIR}/modern-tools.manifest" 2>/dev/null || true
 }
