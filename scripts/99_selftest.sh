@@ -37,8 +37,13 @@ dpkg_audit_clean() { [[ -z "$(dpkg --audit)" ]]; }
 udev_goto_targets_valid() {
     local rule target
     shopt -s nullglob
-    for rule in /usr/lib/udev/rules.d/*alsa*.rules /lib/udev/rules.d/*alsa*.rules; do
+    for rule in /etc/udev/rules.d/*alsa*.rules /usr/lib/udev/rules.d/*alsa*.rules /lib/udev/rules.d/*alsa*.rules; do
         [[ -f "${rule}" ]] || continue
+        local rule_name
+        rule_name="$(basename "${rule}")"
+        if [[ "${rule}" != /etc/udev/rules.d/* && -f "/etc/udev/rules.d/${rule_name}" ]]; then
+            continue
+        fi
         while IFS= read -r target; do
             [[ -n "${target}" ]] || continue
             grep -Fq "LABEL=\"${target}\"" "${rule}" || return 1
