@@ -434,6 +434,14 @@ stage_hash() {   # <script|string>
     fi
 }
 
+finalized_hash() {
+    {
+        cat "${SELF_DIR}/config.env"
+        cat "${SCRIPTS_DIR}/98_finalize.sh" "${SCRIPTS_DIR}/99_selftest.sh"
+        printf '\\noverlay:%s\\n' "$(overlay_hash)"
+    } | sha256sum | awk '{print $1}'
+}
+
 stamp_ok() {   # <name> <hash>
     [[ -f "${STAMP_DIR}/$1" && "$(cat "${STAMP_DIR}/$1")" == "$2" ]]
 }
@@ -599,7 +607,7 @@ run_stage_pipeline() {
         retro_error "After fixing, re-run ./build.sh (completed stages are skipped)."
         exit 1
     fi
-    stamp_set finalized "$(stage_hash 99_selftest.sh)"
+    stamp_set finalized "$(finalized_hash)"
 
     # Leave a pristine chroot behind
     rm -rf "${CHROOT_DIR}${STAGE_DIR_IN_CHROOT}"
@@ -618,7 +626,20 @@ assert_chroot_quiet() {
     if [[ -n "$(chroot_mounts)" ]]; then
         retro_die "mounts are still active under ${CHROOT_DIR}; squashfs would swallow host /dev,/proc. Aborting."
     fi
-    [[ -f "${STAMP_DIR}/finalized" ]] || retro_die "chroot has no passing self-test stamp - run ./build.sh without --skip-chroot first"
+    [[ -x "${CHROOT_DIR}/bin/bash" ]] || retro_die "chroot is missing or incomplete"
+    local want
+    want="$(finalized_hash)"
+    stamp_ok finalized "${want}" || retro_die "chroot finalization/self-test stamp is stale; rebuild without --skip-chroot"
+}
+
+assert_chroot_ready() {
+    local s want
+    [[ -x "${CHROOT_DIR}/bin/bash" ]] || retro_die "--skip-chroot requested but no usable chroot exists"
+    for s in "${CHROOT_STAGES[@]}"; do
+        want="$(stage_hash "${s}")"
+        stamp_ok "${s}" "${want}" || retro_die "--skip-chroot refused: stage ${s} is missing or stale; run ./build.sh normally"
+    done
+    assert_chroot_quiet
 }
 
 build_squashfs() {
@@ -871,7 +892,8 @@ main() {
     mkdir -p "${BUILD_ROOT}" "${STAMP_DIR}" "${OUT_DIR}"
 
     if (( OPT_SKIP_CHROOT )); then
-        retro_info "--skip-chroot: reusing existing chroot"
+        assert_chroot_ready
+        retro_info "--skip-chroot: reusing a fully validated chroot"
     else
         run_debootstrap
         run_stage_pipeline
