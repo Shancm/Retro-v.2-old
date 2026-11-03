@@ -478,13 +478,13 @@ fi
 mark JGMENU_INSTALLED "$(yn command -v jgmenu_run)"
 mark LXTERMINAL_INSTALLED "$(yn command -v lxterminal)"
 mark XORG_RUNNING "$(yn pgrep -x Xorg)"
-if [[ -S /tmp/.X11-unix/X0 ]]; then
-    mark X11_SOCKET yes
-    mark DISPLAY :0
-else
-    mark X11_SOCKET no
-    mark DISPLAY none
+if [[ -S /tmp/.X11-unix/X0 ]]; then mark X11_SOCKET yes; else mark X11_SOCKET no; fi
+openbox_pid="$(pgrep -u "${retro_uid:-0}" -x openbox 2>/dev/null | head -n1 || true)"
+display_value=""
+if [[ -n "${openbox_pid}" && -r "/proc/${openbox_pid}/environ" ]]; then
+    display_value="$(tr '\0' '\n' < "/proc/${openbox_pid}/environ" | sed -n 's/^DISPLAY=//p' | head -n1 || true)"
 fi
+mark DISPLAY "${display_value:-none}"
 mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
 
 loop=0
