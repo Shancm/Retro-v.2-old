@@ -415,8 +415,26 @@ fi
 EOF
 
     retro_write /etc/skel/.config/tint2/tint2rc 0644 <<'EOF'
-# Retro OS classic bottom panel: Launcher, Taskbar, System Tray, Clock
-panel_monitor = all
+# Background 1: panel
+rounded = 0
+border_width = 1
+background_color = #1b1d27 100
+border_color = #3a3f52 100
+
+# Background 2: active task
+rounded = 2
+border_width = 1
+background_color = #2c3448 100
+border_color = #00ff9c 100
+
+# Background 3: urgent task
+rounded = 2
+border_width = 1
+background_color = #ff0055 100
+border_color = #ff0055 100
+
+# Panel
+panel_monitor = primary
 panel_position = bottom center horizontal
 panel_size = 100% 32
 panel_margin = 0 0
@@ -425,52 +443,63 @@ panel_background_id = 1
 panel_items = LTSC
 panel_dock = 0
 panel_layer = bottom
-panel_autohide = 0
-panel_strut = 1
-panel_border_width = 1
-panel_border_color = #3a3f52 100
+strut_policy = follow_size
+disable_transparency = 1
+wm_menu = 1
+
+# Launcher (Start button)
 launcher_padding = 5 2 5
 launcher_background_id = 0
 launcher_icon_size = 24
 launcher_icon_theme = Papirus-Dark
+launcher_icon_theme_override = 1
+launcher_tooltip = 1
 launcher_item_app = /usr/share/applications/retro-start.desktop
-taskbar_mode = multi_desktop
-taskbar_hide_if_empty = 0
+
+# Taskbar
+taskbar_mode = single_desktop
 taskbar_padding = 2 1 2
 taskbar_background_id = 0
 taskbar_active_background_id = 2
-taskbar_name = 0
-taskbar_name_padding = 3 0
-taskbar_name_background_id = 0
-taskbar_name_font = DejaVu Sans 8
-taskbar_name_font_color = #e0e0e0 100
-taskbar_distribute_size = 1
 taskbar_sort_order = none
-taskbar_always_show_all_desktop = 1
-taskbar_show_iconified = 1
-taskbar_show_name = 1
-taskbar_show_icon = 1
-task_icon_size = 20
+task_align = left
+taskbar_name = 0
+
+# Task buttons: show both application icon and window title
+task_icon = 1
 task_text = 1
-task_centered = 1
+task_centered = 0
+task_tooltip = 1
 task_maximum_size = 200 28
-task_padding = 4 2
+task_padding = 4 2 2
 task_background_id = 0
 task_active_background_id = 2
 task_urgent_background_id = 3
+task_iconified_background_id = 0
+task_font = DejaVu Sans 9
+task_font_color = #e0e0e0 100
+task_active_font_color = #ffffff 100
+task_urgent_font_color = #ffffff 100
+task_iconified_font_color = #9ba3b4 100
+
+# System tray: NetworkManager, Blueman and volume icons
 systray_padding = 4 2 4
 systray_background_id = 0
 systray_icon_size = 20
 systray_icon_asb = 100 0 0
-clock_font = DejaVu Sans 9
+
+# Clock: time on line one, date on line two
+time1_format = %H:%M
+time2_format = %a %d %b
+time1_font = DejaVu Sans Bold 9
+time2_font = DejaVu Sans 7
 clock_font_color = #ffffff 100
 clock_padding = 6 2
 clock_background_id = 0
-time1_format = %H:%M
-time2_format = %a %d %b
 clock_tooltip = %A, %d %B %Y
 clock_lclick_command = lxterminal -e date
-tooltip = 1
+
+# Tooltips and panel mouse behavior
 tooltip_padding = 4 2
 tooltip_show_timeout = 0.5
 tooltip_hide_timeout = 0.1
@@ -478,19 +507,6 @@ mouse_middle = none
 mouse_right = none
 mouse_scroll_up = toggle
 mouse_scroll_down = iconify
-# Panel background definitions (IDs 1, 2 and 3)
-rounded = 0
-border_width = 1
-background_color = #1b1d27 94
-border_color = #3a3f52 100
-rounded = 2
-border_width = 1
-background_color = #2c3448 100
-border_color = #00ff9c 100
-rounded = 2
-border_width = 1
-background_color = #ff0055 100
-border_color = #ff0055 100
 EOF
 
     retro_write /etc/skel/.config/jgmenu/jgmenurc 0644 <<'EOF'
