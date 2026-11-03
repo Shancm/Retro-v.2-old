@@ -33,14 +33,14 @@ has_line() { grep -Eq -- "$2" "$1" 2>/dev/null; }
 in_group() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
 
 lightdm_pam_clean() {
-    local f
+    local f pam_dir="${RETRO_SELFTEST_PAM_DIR:-/etc/pam.d}"
     # Debian's greeter/autologin PAM service files may legitimately use
     # pam_permit.so. Only the primary interactive LightDM stack is forbidden
     # from using it. The nopasswdlogin group bypass is forbidden everywhere.
-    if [[ -f /etc/pam.d/lightdm ]] && grep -Eq 'pam_permit[.]so' /etc/pam.d/lightdm; then
+    if [[ -f "${pam_dir}/lightdm" ]] && grep -Eq 'pam_permit[.]so' "${pam_dir}/lightdm"; then
         return 1
     fi
-    for f in /etc/pam.d/lightdm*; do
+    for f in "${pam_dir}"/lightdm*; do
         [[ -f "${f}" ]] || continue
         if grep -Eq 'nopasswdlogin' "${f}"; then
             return 1
