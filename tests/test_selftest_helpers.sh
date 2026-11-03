@@ -26,16 +26,18 @@ PAM_DIR="${TMP}/pam"
 mkdir -p "${PAM_DIR}"
 RETRO_SELFTEST_PAM_DIR="${PAM_DIR}"
 
+# Start from the minimum package-owned PAM files required by the helper.
+printf '@include common-auth\\n' > "${PAM_DIR}/lightdm"
+printf 'auth required pam_permit.so\\n' > "${PAM_DIR}/lightdm-autologin"
 printf 'auth required pam_permit.so\\n' > "${PAM_DIR}/lightdm-greeter"
 if lightdm_pam_clean; then report "package greeter pam_permit allowed" 1; else report "package greeter pam_permit allowed" 0; fi
-printf 'auth required pam_permit.so\\n' > "${PAM_DIR}/lightdm-autologin"
 if lightdm_pam_clean; then report "package autologin pam_permit allowed" 1; else report "package autologin pam_permit allowed" 0; fi
 printf 'auth required pam_permit.so\\n' > "${PAM_DIR}/lightdm"
 if lightdm_pam_clean; then report "primary lightdm pam_permit rejected" 0; else report "primary lightdm pam_permit rejected" 1; fi
-rm -f "${PAM_DIR}/lightdm"
+printf '@include common-auth\\n' > "${PAM_DIR}/lightdm"
 printf 'auth required pam_succeed_if.so user ingroup nopasswdlogin\\n' > "${PAM_DIR}/lightdm-greeter"
 if lightdm_pam_clean; then report "nopasswdlogin in greeter rejected" 0; else report "nopasswdlogin in greeter rejected" 1; fi
-rm -f "${PAM_DIR}/lightdm-greeter"
+printf 'auth required pam_permit.so\\n' > "${PAM_DIR}/lightdm-greeter"
 printf 'auth required pam_succeed_if.so user ingroup nopasswdlogin\\n' > "${PAM_DIR}/lightdm-autologin"
 if lightdm_pam_clean; then report "nopasswdlogin in autologin rejected" 0; else report "nopasswdlogin in autologin rejected" 1; fi
 
