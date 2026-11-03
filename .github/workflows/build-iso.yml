@@ -1,6 +1,7 @@
+---
 name: Build and test Retro OS v2.0
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       debian_suite:
@@ -37,6 +38,9 @@ concurrency:
 env:
   BUILD_ROOT: /opt/retro-build
   DEBIAN_FRONTEND: noninteractive
+
+permissions:
+  contents: read
 
 jobs:
   quality:
@@ -96,7 +100,7 @@ jobs:
     needs: quality
     timeout-minutes: 150
     permissions:
-      contents: write
+      contents: read
     container:
       image: debian:bookworm
       options: --privileged
@@ -175,19 +179,6 @@ jobs:
             /opt/retro-build/out/*.sha256
           if-no-files-found: error
           retention-days: 3
-      - name: Release and upload ISO
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v2.0-build-${{ github.run_number }}"
-          name: "Retro OS v2.0 (Build #${{ github.run_number }})"
-          body: >-
-            Automated Debian-based BIOS/UEFI hybrid ISO
-            with SHA-256 checksum.
-          files: |
-            /opt/retro-build/out/*.iso
-            /opt/retro-build/out/*.sha256
-          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -254,3 +245,30 @@ jobs:
             test-logs/**
           retention-days: 7
           if-no-files-found: ignore
+
+  release:
+    name: Publish ISO release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download built ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: retro-os-v2-iso
+          path: release-out
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v2.0-build-${{ github.run_number }}"
+          name: "Retro OS v2.0 (Build #${{ github.run_number }})"
+          body: >-
+            Automated Debian-based BIOS/UEFI hybrid ISO
+            with SHA-256 checksum.
+          files: |
+            release-out/*.iso
+            release-out/*.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
