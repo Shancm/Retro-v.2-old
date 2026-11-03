@@ -27,11 +27,11 @@ install_classic_tools() {
 
     retro_info "Installing classic auditing tools (CLI + GUI)"
     retro_apt_install \
-        nmap wireshark tshark aircrack-ng hydra nikto sqlmap wifite \
+        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite ffuf \
         tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
 
-    # John The Ripper CLI & GUI (Johnny)
-    retro_apt_install_optional john john-data johnny
+    # John the Ripper CLI is mandatory; optional GUIs remain non-blocking.
+    retro_apt_install_optional john-data johnny
 
     # Hydra GUI (XHydra) & Nmap GUI (NmapSI4) & Gufw Firewall
     retro_apt_install_optional xhydra nmapsi4 gufw etherape
@@ -453,29 +453,30 @@ if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | s
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
 retro_uid="$(id -u retro 2>/dev/null || true)"
 if [[ -n "${retro_uid}" ]]; then
-    mark LABWC_RUNNING "$(yn pgrep -u "${retro_uid}" -x labwc)"
-    mark WAYBAR_RUNNING "$(yn pgrep -u "${retro_uid}" -x waybar)"
-    runtime_dir="/run/user/${retro_uid}"
-    wayland_socket=""
-    if [[ -d "${runtime_dir}" ]]; then
-        wayland_socket="$(find "${runtime_dir}" -maxdepth 1 -type s -name 'wayland-*' -print -quit 2>/dev/null || true)"
-    fi
-    if [[ -n "${wayland_socket}" ]]; then
-        mark WAYLAND_SOCKET yes
-    else
-        mark WAYLAND_SOCKET no
-    fi
-    for p in pcmanfm nm-applet volumeicon; do
+    mark OPENBOX_RUNNING "$(yn pgrep -u "${retro_uid}" -x openbox)"
+    mark TINT2_RUNNING "$(yn pgrep -u "${retro_uid}" -x tint2)"
+    mark PROC_pcmanfm "$(yn pgrep -u "${retro_uid}" -f 'pcmanfm --desktop')"
+    for p in nm-applet blueman-applet volumeicon; do
         mark "PROC_${p//-/_}" "$(yn pgrep -u "${retro_uid}" -x "${p}")"
     done
 else
-    mark LABWC_RUNNING no
-    mark WAYBAR_RUNNING no
-    mark WAYLAND_SOCKET no
-    for p in pcmanfm nm-applet volumeicon; do mark "PROC_${p//-/_}" no; done
+    mark OPENBOX_RUNNING no
+    mark TINT2_RUNNING no
+    mark PROC_pcmanfm no
+    mark PROC_nm_applet no
+    mark PROC_blueman_applet no
+    mark PROC_volumeicon no
 fi
-mark FOOT_INSTALLED "$(yn command -v foot)"
-mark WOFI_INSTALLED "$(yn command -v wofi)"
+mark JGMENU_INSTALLED "$(yn command -v jgmenu_run)"
+mark LXTERMINAL_INSTALLED "$(yn command -v lxterminal)"
+mark XORG_RUNNING "$(yn pgrep -x Xorg)"
+if [[ -S /tmp/.X11-unix/X0 ]]; then
+    mark X11_SOCKET yes
+    mark DISPLAY :0
+else
+    mark X11_SOCKET no
+    mark DISPLAY none
+fi
 mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
 
 loop=0
