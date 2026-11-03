@@ -59,28 +59,28 @@ OLD_PATH="$PATH"
 PATH="${MOCKBIN}:/usr/bin:/bin"
 export PATH
 
-TEST_DPKG_VERSION="2.103.3"
+export TEST_DPKG_VERSION="2.103.3"
 v="$(gh_version)"
 if [[ "$v" == "2.103.3" ]] && dpkg --compare-versions "$v" ge 2.67.0; then report "dpkg version 2.103.3 accepted" 1; else report "dpkg version 2.103.3 accepted" 0; fi
 
-TEST_DPKG_VERSION="2.66.1"
+export TEST_DPKG_VERSION="2.66.1"
 v="$(gh_version)"
 if [[ "$v" == "2.66.1" ]] && ! dpkg --compare-versions "$v" ge 2.67.0; then report "dpkg version 2.66.1 rejected" 1; else report "dpkg version 2.66.1 rejected" 0; fi
 
-TEST_DPKG_VERSION="1:2.103.3-1"
+export TEST_DPKG_VERSION="1:2.103.3-1"
 v="$(gh_version)"
 if [[ "$v" == "1:2.103.3-1" ]] && dpkg --compare-versions "$v" ge 2.67.0; then report "epoch version parsed and accepted" 1; else report "epoch version parsed and accepted" 0; fi
 
-TEST_DPKG_VERSION="2.67.0"
+export TEST_DPKG_VERSION="2.67.0"
 v="$(gh_version)"
 if [[ "$v" == "2.67.0" ]] && dpkg --compare-versions "$v" ge 2.67.0; then report "minimum supported version accepted" 1; else report "minimum supported version accepted" 0; fi
 
-TEST_DPKG_VERSION=""
-TEST_GH_VERSION="2.103.3"
+export TEST_DPKG_VERSION=""
+export TEST_GH_VERSION="2.103.3"
 v="$(gh_version)"
 if [[ "$v" == "2.103.3" ]]; then report "gh --version fallback parsed" 1; else report "gh --version fallback parsed" 0; fi
 
-TEST_GH_VERSION=""
+export TEST_GH_VERSION=""
 if gh_version >/dev/null 2>&1; then report "missing version detected" 0; else report "missing version detected" 1; fi
 
 PATH="$OLD_PATH"
