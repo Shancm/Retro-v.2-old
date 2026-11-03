@@ -148,6 +148,7 @@ class ProbeAndVoiceTests(unittest.TestCase):
         proc.wait.side_effect = [
             subprocess.TimeoutExpired("espeak-ng", 30),
             subprocess.TimeoutExpired("espeak-ng", 2),
+            0,
         ]
         with mock.patch.object(retro_ai, "load_config", return_value={"voice_speed": "150"}), \
              mock.patch.object(retro_ai, "speak", return_value=True), \
