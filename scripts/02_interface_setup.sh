@@ -69,6 +69,43 @@ install_graphical_stack() {
 install_branding_assets() {
     retro_info "Installing Retro OS X11 branding and Openbox session"
     mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/xsessions /usr/share/applications /usr/share/retro-os
+    python3 - <<'PY'
+import binascii
+import math
+import struct
+import zlib
+
+width, height = 1280, 720
+rows = []
+for y in range(height):
+    row = bytearray((0,))
+    for x in range(width):
+        glow = max(0.0, 1.0 - math.sqrt(((x - width * 0.72) / (width * 0.9)) ** 2 +
+                                       ((y - height * 0.32) / (height * 0.9)) ** 2))
+        r = int(8 + 5 * glow)
+        g = int(12 + 13 * glow)
+        b = int(22 + 17 * glow)
+        if x % 80 == 0 or y % 80 == 0:
+            r = min(255, r + 2)
+            g = min(255, g + 18)
+            b = min(255, b + 10)
+        if abs(y - int(height * 0.78)) < 2:
+            g = min(255, g + 12)
+        row.extend((r, g, b))
+    rows.append(bytes(row))
+
+def chunk(kind, data):
+    body = kind + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", binascii.crc32(body) & 0xffffffff)
+
+png = (b"\x89PNG\r\n\x1a\n" +
+       chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+       chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) +
+       chunk(b"IEND", b""))
+with open("/usr/share/backgrounds/retro-os/wallpaper.png", "wb") as image:
+    image.write(png)
+PY
+    chmod 0644 /usr/share/backgrounds/retro-os/wallpaper.png
     retro_write /usr/share/pixmaps/retro-start.svg 0644 <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs><radialGradient id="g" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7dffd0"/><stop offset=".55" stop-color="#00ff9c"/><stop offset="1" stop-color="#007a4c"/></radialGradient></defs>
