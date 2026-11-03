@@ -223,7 +223,7 @@ for ctl in Master Speaker Headphone PCM; do
 done
 
 if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares >/dev/null 2>&1; then
-    sudo -E calamares &
+    pkexec calamares &
 fi
 
 wait
