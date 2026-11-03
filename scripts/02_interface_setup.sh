@@ -39,7 +39,7 @@ install_graphical_stack() {
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
-        cbatticon parcellite pavucontrol blueman \
+        cbatticon parcellite blueman \
         dillo geany geany-plugins vlc ristretto evince galculator xarchiver p7zip-full unrar-free
 
     retro_apt_install_optional \
@@ -518,7 +518,7 @@ EOF
   "spacing": 8,
   "modules-left": ["custom/launcher", "clock"],
   "modules-center": ["cpu", "memory"],
-  "modules-right": ["network", "pulseaudio", "tray", "battery"],
+  "modules-right": ["network", "custom/audio", "tray", "battery"],
   "custom/launcher": {
     "format": "  RETRO",
     "tooltip": false,
@@ -543,10 +543,11 @@ EOF
     "tooltip": true,
     "interval": 5
   },
-  "pulseaudio": {
-    "format": "VOL {volume}%",
-    "format-muted": "MUTE",
-    "on-click": "pavucontrol"
+  "custom/audio": {
+    "format": "VOL {}",
+    "exec": "amixer get Master 2>/dev/null | grep -o '[0-9][0-9]*%' | head -n1",
+    "interval": 3,
+    "on-click": "foot -e alsamixer"
   },
   "tray": {
     "icon-size": 16,
