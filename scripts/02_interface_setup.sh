@@ -151,16 +151,6 @@ install_login_stack() {
             -o Dpkg::Options::=--force-confmiss \
             --reinstall install -y lightdm
     fi
-    rm -f /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
-if grep -qw 'retro.report=1' /proc/cmdline; then
-    cat > /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf <<'EOT'
-[Seat:*]
-autologin-user=retro
-autologin-user-timeout=0
-autologin-session=retro-os
-EOT
-    chmod 0644 /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
-fi
     echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
     systemctl enable lightdm.service
     systemctl set-default graphical.target
@@ -236,6 +226,17 @@ usermod --shell /bin/bash "${USER_NAME}"
 passwd --lock "${USER_NAME}" >/dev/null 2>&1 || true
 rm -f /etc/sudoers.d/90-retro-nopasswd
 rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
+if grep -qw 'retro.report=1' /proc/cmdline; then
+    cat > /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf <<'EOT'
+[Seat:*]
+autologin-user=retro
+autologin-user-timeout=0
+autologin-session=retro-os
+EOT
+    chmod 0644 /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
+else
+    rm -f /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
+fi
 
 sync_file() {
     local src="$1" dst="$2" mode="$3"
