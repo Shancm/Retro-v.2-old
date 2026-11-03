@@ -175,10 +175,12 @@ configure_locale_time() {
     locale-gen
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
     
-    ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
-    echo "Asia/Kolkata" > /etc/timezone
+    local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
+    [[ -f "${zoneinfo}" ]] || retro_die "Configured timezone does not exist: ${RETRO_TIMEZONE}"
+    ln -snf "${zoneinfo}" /etc/localtime
+    printf '%s\\n' "${RETRO_TIMEZONE}" > /etc/timezone
     systemctl enable systemd-timesyncd.service
-    systemctl enable bluetooth.service || true 
+    systemctl enable bluetooth.service || true
 
     retro_write /etc/default/keyboard 0644 <<EOF
 XKBMODEL="pc105"
