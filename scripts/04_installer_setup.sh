@@ -55,34 +55,33 @@ EOF
 }
 
 install_grub_btrfs() {
-    retro_info "Compiling grub-btrfs from source"
-    local work tag tarball_url=""
+    retro_info "Installing pinned grub-btrfs source revision ${RETRO_GRUB_BTRFS_PIN}"
+    local work src actual
     work="$(mktemp -d)"
+    src="${work}/src"
 
-    local -a hdr=(-H "Accept: application/vnd.github+json" -H "User-Agent: retro-os-build")
-    [[ -n "${GITHUB_TOKEN:-}" ]] && hdr+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-
-    tag="$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "${hdr[@]}" \
-            https://api.github.com/repos/Antynea/grub-btrfs/releases/latest 2>/dev/null \
-          | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null || true)"
-    if [[ -z "${tag}" ]]; then
-        tag="v${RETRO_GRUB_BTRFS_PIN}"
-        retro_warn "GitHub API unavailable - using pinned grub-btrfs ${tag}"
-    fi
-    tarball_url="https://github.com/Antynea/grub-btrfs/archive/refs/tags/${tag}.tar.gz"
-
-    if ! retro_retry 3 5 curl -fsSL --connect-timeout 15 --max-time 300 -o "${work}/gb.tar.gz" "${tarball_url}"; then
-        retro_warn "Could not download grub-btrfs ${tag}; Btrfs snapshot boot entries will be unavailable"
+    # Do not build whatever GitHub labels as "latest". Fetch the exact tag,
+    # then verify its immutable commit ID before executing its Makefile as root.
+    if ! git init -q "${src}" ||
+       ! git -C "${src}" remote add origin https://github.com/Antynea/grub-btrfs.git ||
+       ! retro_retry 3 5 git -C "${src}" fetch --depth 1 origin "refs/tags/${RETRO_GRUB_BTRFS_PIN}" ||
+       ! git -C "${src}" checkout --quiet --detach FETCH_HEAD; then
+        retro_warn "Could not fetch pinned grub-btrfs ${RETRO_GRUB_BTRFS_PIN}; snapshot boot entries will be unavailable"
         rm -rf "${work}"
         return 0
     fi
 
-    tar -xzf "${work}/gb.tar.gz" -C "${work}"
-    local src
-    src="$(find "${work}" -maxdepth 1 -type d -name 'grub-btrfs*' | head -n1)"
-    [[ -n "${src}" ]] || retro_die "grub-btrfs source directory not found in tarball"
+    actual="$(git -C "${src}" rev-parse HEAD)"
+    if [[ "${actual}" != "${RETRO_GRUB_BTRFS_COMMIT}" ]]; then
+        rm -rf "${work}"
+        retro_die "grub-btrfs source revision mismatch: expected ${RETRO_GRUB_BTRFS_COMMIT}, got ${actual}; refusing to execute unpinned source"
+    fi
 
-    ( cd "${src}" && make install )
+    if ! make -C "${src}" install; then
+        rm -rf "${work}"
+        retro_warn "Pinned grub-btrfs install failed; snapshot boot entries will be unavailable"
+        return 0
+    fi
 
     # Debian paths for grub tooling
     if [[ -d /etc/default/grub-btrfs ]]; then
@@ -98,7 +97,7 @@ EOF
     # The daemon must NOT run in the live session; retro-post-install enables it
     # on installed Btrfs systems.
     systemctl disable grub-btrfsd.service >/dev/null 2>&1 || true
-    retro_ok "grub-btrfs ${tag} installed"
+    retro_ok "grub-btrfs ${RETRO_GRUB_BTRFS_PIN} (${actual}) installed"
     rm -rf "${work}"
 }
 
