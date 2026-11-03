@@ -267,6 +267,7 @@ test_payload() {
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
     done
+    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/lib/mate-polkit/polkit-mate-authentication-agent-1
     for b in rustscan ffuf httpx naabu; do
         if command -v "${b}" >/dev/null 2>&1; then
             pass "modern tool: ${b}"
@@ -467,7 +468,7 @@ test_payload() {
         fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
     fi
     local b
-    for b in labwc waybar foot wofi swaybg mako polkit-mate-authentication-agent-1 lightdm gh Xwayland pcmanfm nm-applet volumeicon \
+    for b in labwc waybar foot wofi swaybg mako lightdm gh Xwayland pcmanfm nm-applet volumeicon \
              grim slurp wl-copy nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
