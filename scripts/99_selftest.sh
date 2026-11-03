@@ -280,7 +280,7 @@ test_payload() {
     check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
     check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
     check "retro_ai.py compiles" "python3 -m py_compile ${RETRO_AI_DIR}/retro_ai.py" python3 -m py_compile "${RETRO_AI_DIR}/retro_ai.py"
-    find "${RETRO_AI_DIR}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+    find "${RETRO_AI_DIR}" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
     local s
     for s in "${RETRO_HELPER_DIR}"/*; do
