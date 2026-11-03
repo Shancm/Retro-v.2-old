@@ -218,13 +218,44 @@ cmd_boost() {
     before="$(mem_available_mb)"
     say "Retro Boost - available RAM before: ${before} MiB"
 
+    local desktop_user desktop_home tint_cfg opaque_cfg
+    desktop_user="$(target_user)"
+    if [[ -n "${desktop_user}" ]]; then
+        desktop_home="$(getent passwd "${desktop_user}" | cut -d: -f6)"
+        install -d -o "${desktop_user}" -g "${desktop_user}" "${desktop_home}/.config/retro" "${desktop_home}/.config/tint2"
+        printf 'off\\n' > "${desktop_home}/.config/retro/compositor"
+        chown "${desktop_user}:${desktop_user}" "${desktop_home}/.config/retro/compositor"
+        chmod 0600 "${desktop_home}/.config/retro/compositor"
+        tint_cfg="${desktop_home}/.config/tint2/tint2rc"
+        opaque_cfg="${desktop_home}/.config/tint2/retro-opaque.tint2rc"
+        if [[ -r "${tint_cfg}" ]]; then
+            awk '
+                /^panel_background_id[[:space:]]*=/ { print "panel_background_id = 1"; panel=1; next }
+                /^disable_transparency[[:space:]]*=/ { print "disable_transparency = 1"; disabled=1; next }
+                { print }
+                END {
+                    if (!panel) print "panel_background_id = 1"
+                    if (!disabled) print "disable_transparency = 1"
+                }
+            ' "${tint_cfg}" > "${opaque_cfg}"
+            chown "${desktop_user}:${desktop_user}" "${opaque_cfg}"
+            chmod 0600 "${opaque_cfg}"
+        fi
+    fi
     if pgrep -x picom >/dev/null 2>&1; then
         pkill -x picom || true
-        ok "compositor (picom) stopped"
-        # tell tint2 to reload so it falls back to its opaque rendering
-        pkill -USR1 -x tint2 2>/dev/null || true
+        ok "compositor (picom) stopped; persistent preference set to off"
     else
-        say "compositor not running"
+        say "compositor already stopped; persistent preference set to off"
+    fi
+    if [[ -n "${desktop_user:-}" && -s "${opaque_cfg:-}" && -n "${DISPLAY:-}" ]]; then
+        pkill -x tint2 2>/dev/null || true
+        runuser -u "${desktop_user}" -- env DISPLAY="${DISPLAY}" \
+            XAUTHORITY="${XAUTHORITY:-${desktop_home}/.Xauthority}" \
+            tint2 -c "${opaque_cfg}" >/dev/null 2>&1 &
+        ok "tint2 restarted with opaque configuration"
+    else
+        warn "opaque tint2 restart skipped (no desktop user/configuration/display)"
     fi
 
     local -a idle_units=(
@@ -763,7 +794,6 @@ cmd_panic() {
     if [[ "${1:-}" == "--restore" || "${1:-}" == "-r" ]]; then panic_restore; return; fi
     need_root
 
-    # 1. drop everything on the wire first - speed matters
     if command -v nft >/dev/null 2>&1; then
         nft -f - <<'EOF' || true
 table inet retro_panic {
@@ -775,21 +805,48 @@ EOF
     fi
     command -v rfkill >/dev/null 2>&1 && rfkill block all 2>/dev/null || true
     command -v nmcli >/dev/null 2>&1 && nmcli networking off 2>/dev/null || true
-    local dev
-    for dev in /sys/class/net/*; do
-        dev="$(basename "${dev}")"
-        [[ "${dev}" == "lo" ]] || ip link set "${dev}" down 2>/dev/null || true
+
+    local dev nft_ok=0 links_ok=1 lock_ok=0 state
+    local -a interfaces=()
+    if command -v nft >/dev/null 2>&1 && nft list table inet retro_panic >/dev/null 2>&1; then
+        nft_ok=1
+    fi
+    for devpath in /sys/class/net/*; do
+        dev="$(basename "${devpath}")"
+        [[ "${dev}" == "lo" ]] && continue
+        interfaces+=("${dev}")
+        if ! ip link set "${dev}" down 2>/dev/null; then
+            links_ok=0
+            continue
+        fi
+        state="$(ip -o link show dev "${dev}" 2>/dev/null || true)"
+        if [[ "${state}" != *"state DOWN"* ]]; then
+            links_ok=0
+        fi
     done
     pkill -f retro-share 2>/dev/null || true
 
-    # 2. lock the graphical session (LightDM seat lock, then logind as backup)
-    XDG_SEAT_PATH="/org/freedesktop/DisplayManager/Seat0" dm-tool lock 2>/dev/null \
-        || loginctl lock-sessions 2>/dev/null || true
-    loginctl lock-sessions 2>/dev/null || true
+    if XDG_SEAT_PATH="/org/freedesktop/DisplayManager/Seat0" dm-tool lock 2>/dev/null; then
+        lock_ok=1
+    elif loginctl lock-sessions 2>/dev/null; then
+        lock_ok=1
+    fi
 
     mkdir -p /run/retro-os
-    date -u +%FT%TZ > /run/retro-os/panic.state
-    printf '%s%s PANIC %s network isolated + session locked. Restore with: retro panic --restore\n' "${CRIM}" "${BOLD}" "${RST}"
+    printf 'requested=%s nft_table=%s links_down=%s lock_requested=%s\\n' \
+        "$(date -u +%FT%TZ)" "$([[ "${nft_ok}" == 1 ]] && echo yes || echo no)" \
+        "$([[ "${links_ok}" == 1 ]] && echo yes || echo no)" \
+        "$([[ "${lock_ok}" == 1 ]] && echo yes || echo no)" > /run/retro-os/panic.state
+    printf 'PANIC state: nft_table=%s links_down=%s interfaces=%d lock_requested=%s\\n' \
+        "$([[ "${nft_ok}" == 1 ]] && echo confirmed || echo NOT_CONFIRMED)" \
+        "$([[ "${links_ok}" == 1 ]] && echo confirmed || echo NOT_CONFIRMED)" \
+        "${#interfaces[@]}" "$([[ "${lock_ok}" == 1 ]] && echo yes || echo no)"
+    if (( nft_ok == 1 && links_ok == 1 && lock_ok == 1 )); then
+        ok "network isolation confirmed and session lock requested; restore with: retro panic --restore"
+        return 0
+    fi
+    warn "PANIC isolation is incomplete - inspect nftables, interface state and desktop lock immediately"
+    return 1
 }
 
 # -----------------------------------------------------------------------------
