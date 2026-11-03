@@ -196,7 +196,8 @@ test_home() {
     done
 
     local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
-    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1 | tr -d '[:space:]')"
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
+    png_magic="${png_magic//[[:space:]]/}"
     if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]]; then
         pass "wallpaper present and a valid PNG (${wp})"
     else
