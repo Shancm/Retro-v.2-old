@@ -458,8 +458,8 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
         -serial stdio
         -monitor "unix:${sock},server,nowait"
         -no-reboot
-        -netdev user,id=n0
-        -device virtio-net-pci,netdev=n0
+        "-netdev" "user,id=n0"
+        "-device" "virtio-net-pci,netdev=n0"
     )
     if (( USE_KVM )); then q+=(-enable-kvm -cpu host); else q+=(-accel tcg -cpu max); fi
 
@@ -477,8 +477,8 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
 
     if (( OPT_USB )); then
         info "attaching the ISO as a USB disk (isohybrid test)"
-        q+=(-drive "if=none,id=stick,format=raw,readonly=on,file=${iso}" -device qemu-xhci,id=xhci
-            -device usb-storage,bus=xhci.0,drive=stick,bootindex=1)
+        q+=(-drive "if=none,id=stick,format=raw,readonly=on,file=${iso}" "-device" "qemu-xhci,id=xhci"
+            "-device" "usb-storage,bus=xhci.0,drive=stick,bootindex=1")
     elif [[ "${mode}" == "bios" ]]; then
         q+=(-cdrom "${iso}" -boot d)
     else
@@ -532,8 +532,7 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
         fi
         qemu_monitor "${sock}" "quit" 1 || true
     fi
-    local i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         kill -0 "${qpid}" 2>/dev/null || break
         sleep 1
     done
