@@ -36,6 +36,27 @@ install_graphical_stack() {
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         mousepad lxtask lxappearance dillo geany geany-plugins \
         vlc ristretto evince galculator p7zip-full unrar-free
+
+    # Debian Trixie alsa-utils 1.2.14-1 can ship GOTO="alsa_restore_std"
+    # while the corresponding label is still named alsa_restore_go.
+    local alsa_rule="/usr/lib/udev/rules.d/90-alsa-restore.rules"
+    local alsa_override="/etc/udev/rules.d/90-alsa-restore.rules"
+    if [[ -f "${alsa_rule}" ]] &&
+       grep -q 'GOTO="alsa_restore_std"' "${alsa_rule}" &&
+       ! grep -q 'LABEL="alsa_restore_std"' "${alsa_rule}" &&
+       grep -q 'LABEL="alsa_restore_go"' "${alsa_rule}"; then
+        mkdir -p /etc/udev/rules.d
+        install -m 0644 "${alsa_rule}" "${alsa_override}"
+        sed -i \
+            -e 's/GOTO="alsa_restore_go"/GOTO="alsa_restore_std"/g' \
+            -e 's/LABEL="alsa_restore_go"/LABEL="alsa_restore_std"/g' \
+            "${alsa_override}"
+        grep -q 'LABEL="alsa_restore_std"' "${alsa_override}" \
+            || retro_die "failed to repair ALSA restore udev labels"
+        retro_warn "Applied persistent ALSA udev label compatibility fix in /etc/udev/rules.d"
+        udevadm control --reload-rules 2>/dev/null || true
+    fi
+
     retro_apt_install_optional \
         xserver-xorg-video-intel xserver-xorg-video-fbdev \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
