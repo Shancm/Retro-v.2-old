@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Retro OS v2.0 - 02_interface_setup.sh
-# Debian Trixie Wayland desktop: Labwc + Waybar + Foot + Wofi.
+# Debian Trixie X11 desktop: Openbox + Tint2 + LXTerminal + jgmenu.
 # LightDM/Xorg is retained only for the graphical login greeter; user sessions
-# run on Wayland, with Xwayland for legacy X11 applications.
+# run on X11, with Xwayland for legacy X11 applications.
 # =============================================================================
 set -Eeuo pipefail
 
@@ -108,7 +108,7 @@ EOF
 }
 
 install_login_stack() {
-    retro_info "Installing authenticated LightDM greeter and Labwc Wayland session"
+    retro_info "Installing authenticated LightDM greeter and Openbox X11 session"
     mkdir -p /etc/lightdm/lightdm.conf.d /etc/X11
     install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf
     install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf
@@ -153,7 +153,7 @@ EOF
 
 start_once swaybg swaybg -i /usr/share/backgrounds/retro-os/wallpaper.png -m fill
 sleep 0.3
-start_once waybar waybar
+start_once tint2 tint2
 start_once mako mako
 start_once polkit-mate-authentication-agent-1 /usr/libexec/polkit-mate-authentication-agent-1
 start_once nm-applet nm-applet --indicator
@@ -289,149 +289,120 @@ EOF
     systemctl enable retro-live-fixup.service retro-live-credentials.service
 }
 
+
 write_menu_tools() {
-    retro_info "Installing Wayland menu generator and security tool catalogue"
+    retro_info "Installing Openbox root-menu generator"
     mkdir -p "${RETRO_ROOT}/menu.d"
     retro_write "${RETRO_ROOT}/menu.d/10-security.list" 0644 <<'EOF'
-Reconnaissance|Nmap (CLI)|nmap|--help|utilities-terminal|CLI
-Reconnaissance|Nmap GUI (NmapSI4)|nmapsi4||utilities-terminal|GUI
+Reconnaissance|Nmap|nmap|--help|utilities-terminal|CLI
 Reconnaissance|RustScan|rustscan|--help|utilities-terminal|CLI
 Reconnaissance|Naabu|naabu|--help|utilities-terminal|CLI
-Reconnaissance|httpx|httpx|--help|utilities-terminal|CLI
+Reconnaissance|ProjectDiscovery httpx|httpx|--help|utilities-terminal|CLI
 Web Audit|Nikto|nikto|-Help|utilities-terminal|CLI
 Web Audit|SQLMap|sqlmap|--help|utilities-terminal|CLI
 Web Audit|ffuf|ffuf|--help|utilities-terminal|CLI
-Passwords|Hydra (CLI)|hydra|--help|utilities-terminal|CLI
-Passwords|Hydra GUI (XHydra)|xhydra||security-high|GUI
+Passwords|Hydra|hydra|--help|utilities-terminal|CLI
 Passwords|John the Ripper|john||utilities-terminal|CLI
-Passwords|Johnny GUI|johnny||security-high|GUI
 Wireless|Aircrack-ng|aircrack-ng|--help|utilities-terminal|CLI
 Wireless|Wifite|wifite||utilities-terminal|CLI
 Sniffing|Tshark|tshark|--help|utilities-terminal|CLI
 Sniffing|Wireshark|wireshark||wireshark|GUI
-Firewall|Gufw Firewall|gufw||security-high|GUI
 EOF
 
     retro_write "${RETRO_HELPER_DIR}/retro-menu-gen" 0755 <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
 LIST_DIR="${RETRO_MENU_LIST_DIR:-/opt/retro-os/menu.d}"
-ROOT="${RETRO_MENU_ROOT:-}"
-MARK="retro-os:generated"
 declare -a CAT_ORDER=()
 declare -A CAT_ITEMS=()
-
 die() { echo "retro-menu-gen: $*" >&2; exit 1; }
-have() { [[ -n "${RETRO_MENU_ASSUME_ALL:-}" ]] && return 0; command -v "$1" >/dev/null 2>&1; }
+have() { command -v "$1" >/dev/null 2>&1; }
 xml_escape() {
-    # Use sed replacement escaping: Bash parameter-substitution replacement
-    # treats '&' specially and can silently generate malformed XML.
-    printf '%s' "$1" | sed \
-        -e 's/&/\&amp;/g' \
-        -e 's/</\&lt;/g' \
-        -e 's/>/\&gt;/g' \
-        -e 's/"/\&quot;/g'
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
 }
 load_entries() {
     local f line cat label bin args icon mtype
     shopt -s nullglob
     for f in "${LIST_DIR}"/*.list; do
-        while IFS= read -r line || [[ -n "${line}" ]]; do
-            [[ -z "${line//[[:space:]]/}" || "${line}" =~ ^[[:space:]]*# ]] && continue
-            IFS='|' read -r cat label bin args icon mtype <<< "${line}"
-            [[ -n "${cat}" && -n "${label}" && -n "${bin}" ]] || continue
-            have "${bin}" || continue
-            if [[ -z "${CAT_ITEMS[${cat}]+x}" ]]; then
-                CAT_ORDER+=("${cat}")
-                CAT_ITEMS["${cat}"]=""
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "${line//[[:space:]]/}" || "$line" =~ ^[[:space:]]*# ]] && continue
+            IFS='|' read -r cat label bin args icon mtype <<< "$line"
+            [[ -n "$cat" && -n "$label" && -n "$bin" ]] || continue
+            have "$bin" || continue
+            if [[ -z "${CAT_ITEMS[$cat]+x}" ]]; then
+                CAT_ORDER+=("$cat")
+                CAT_ITEMS["$cat"]=""
             fi
-            CAT_ITEMS["${cat}"]+="${label}|${bin}|${args}|${icon}|${mtype}"$'\n'
-        done < "${f}"
+            CAT_ITEMS["$cat"]+="$label|$bin|$args|$icon|$mtype"$'\n'
+        done < "$f"
     done
 }
 item() {
-    printf '  <item label="%s"><action name="Execute" command="%s"/></item>\n' \
+    printf '  <item label="%s"><action name="Execute"><command>%s</command></action></item>\n' \
         "$(xml_escape "$1")" "$(xml_escape "$2")"
 }
 build_menu() {
     local cat label bin args icon mtype index=0 command
     printf '<?xml version="1.0"?>\n<openbox_menu>\n<menu id="root-menu" label="Retro OS">\n'
-    item "Application Launcher" "wofi --show drun"
-    item "Terminal (Foot)" "foot"
+    item "Applications" "jgmenu_run"
+    item "Terminal" "lxterminal"
     item "File Manager" "pcmanfm"
-    if have firefox-esr; then item "Web Browser" "firefox-esr"; fi
     item "Text Editor" "mousepad"
     printf '  <separator/>\n'
-    if (( ${#CAT_ORDER[@]} > 0 )); then
-        for cat in "${CAT_ORDER[@]}"; do
-            index=$((index + 1))
-            printf '  <menu id="retro-sec-%d" label="%s">\n' "${index}" "$(xml_escape "${cat}")"
-            while IFS='|' read -r label bin args icon mtype; do
-                [[ -n "${label}" ]] || continue
-                if [[ "${mtype}" == "GUI" ]]; then
-                    command="${bin} ${args}"
-                else
-                    command="foot --hold -e bash -lc '${bin} ${args}; printf \"\\nPress Enter to close...\"; read -r; exec bash -i'"
-                fi
-                item "${label}" "${command}"
-            done <<< "${CAT_ITEMS[${cat}]}"
-            printf '  </menu>\n'
-        done
-    fi
+    for cat in "${CAT_ORDER[@]}"; do
+        index=$((index + 1))
+        printf '  <menu id="retro-sec-%d" label="%s">\n' "$index" "$(xml_escape "$cat")"
+        while IFS='|' read -r label bin args icon mtype; do
+            [[ -n "$label" ]] || continue
+            if [[ "$mtype" == "GUI" ]]; then command="$bin $args"; else command="lxterminal -e $bin $args"; fi
+            item "$label" "$command"
+        done <<< "${CAT_ITEMS[$cat]}"
+        printf '  </menu>\n'
+    done
     printf '  <separator/>\n'
-    item "Retro Boost" "foot --hold -e sudo retro boost"
-    item "Retro Doctor" "foot --hold -e sudo retro doctor"
-    item "Retro Update" "foot --hold -e sudo retro update"
-    item "Retro AI" "foot -e retro ai"
-    item "System Monitor" "foot -e btop"
-    item "System Information" "foot -e retro fetch"
+    item "Retro Boost" "lxterminal -e sudo retro boost"
+    item "Retro Doctor" "lxterminal -e sudo retro doctor"
+    item "Retro Update" "lxterminal -e sudo retro update"
+    item "Retro AI" "lxterminal -e retro ai"
+    item "System Monitor" "lxterminal -e btop"
+    item "System Information" "lxterminal -e retro fetch"
     item "Network Connections" "nm-connection-editor"
     if have calamares; then item "Install Retro OS" "pkexec calamares"; fi
-    item "Lock Screen" "dm-tool lock"
-    item "Reconfigure Labwc" "labwc --reconfigure"
-    item "Log Out" "labwc --exit"
+    item "Reconfigure Openbox" "openbox --reconfigure"
+    item "Log Out" "openbox --exit"
     item "Reboot" "systemctl reboot"
     item "Shut Down" "systemctl poweroff"
     printf '</menu>\n</openbox_menu>\n'
 }
 atomic_write() {
     local dest="$1" tmp
-    mkdir -p "$(dirname "${dest}")"
-    tmp="$(mktemp "${dest}.XXXXXX")"
-    cat > "${tmp}"
-    chmod 0644 "${tmp}"
-    mv -f "${tmp}" "${dest}"
+    mkdir -p "$(dirname "$dest")"
+    tmp="$(mktemp "$dest.XXXXXX")"
+    cat > "$tmp"
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "$dest"
 }
 write_menu() {
     local home="$1"
-    build_menu | atomic_write "${home}/.config/labwc/menu.xml"
+    build_menu | atomic_write "$home/.config/openbox/menu.xml"
 }
 main() {
     case "${1:-}" in
-        --system)
-            load_entries
-            write_menu /etc/skel
-            ;;
+        --system) load_entries; write_menu /etc/skel ;;
         --user)
             local home="${2:-${HOME}}"
-            [[ -d "${home}" ]] || die "home directory not found: ${home}"
+            [[ -d "$home" ]] || die "home directory not found: $home"
             load_entries
-            write_menu "${home}"
+            write_menu "$home"
             if [[ "$(id -u)" -eq 0 ]]; then
                 local owner
-                owner="$(stat -c %U:%G "${home}")"
-                chown "${owner}" "${home}/.config/labwc" "${home}/.config/labwc/menu.xml"
+                owner="$(stat -c %U:%G "$home")"
+                chown "$owner" "$home/.config/openbox" "$home/.config/openbox/menu.xml"
             fi
             ;;
-        --list)
-            load_entries
-            printf '%s\n' "${CAT_ORDER[@]}"
-            ;;
-        *)
-            echo "usage: retro-menu-gen {--system|--user HOME|--list}" >&2
-            exit 2
-            ;;
+        --list) load_entries; printf '%s\n' "${CAT_ORDER[@]}" ;;
+        *) echo "usage: retro-menu-gen {--system|--user HOME|--list}" >&2; exit 2 ;;
     esac
 }
 main "$@"
@@ -439,194 +410,137 @@ EOF
 }
 
 write_skel_session() {
-    retro_info "Writing Labwc session, Waybar panel, Wofi launcher and Foot terminal config"
-    mkdir -p "${SKEL}/.config/labwc" "${SKEL}/.config/waybar" "${SKEL}/.config/wofi" "${SKEL}/.config/foot"
+    retro_info "Writing Windows 7-style Openbox + Tint2 + jgmenu configuration"
+    mkdir -p /etc/skel/.config/openbox /etc/skel/.config/tint2 /etc/skel/.config/jgmenu
 
-    retro_write "${SKEL}/.config/labwc/rc.xml" 0644 <<'EOF'
-<?xml version="1.0"?>
-<labwc_config>
-  <theme>
-    <cornerRadius>3</cornerRadius>
-    <font name="JetBrains Mono" size="10"/>
-  </theme>
+    retro_write /etc/skel/.config/openbox/rc.xml 0644 <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <resistance><strength>10</strength><screen_edge_strength>20</screen_edge_strength></resistance>
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus><underMouse>no</underMouse><focusLast>yes</focusLast></focus>
+  <placement><policy>Smart</policy><center>yes</center><monitor>Primary</monitor></placement>
+  <theme><name>Clearlooks</name><titleLayout>NLIMC</titleLayout><keepBorder>yes</keepBorder><animateIconify>no</animateIconify></theme>
+  <desktops><number>2</number><firstdesk>1</firstdesk><names><name>Desktop 1</name><name>Desktop 2</name></names><popupTime>0</popupTime></desktops>
+  <resize><drawContents>yes</drawContents><popupShow>Nonpixel</popupShow><popupPosition>Center</popupPosition><popupFixed>no</popupFixed></resize>
   <keyboard>
-    <default/>
-    <keybind key="W-Return"><action name="Execute" command="foot"/></keybind>
-    <keybind key="C-A-t"><action name="Execute" command="foot"/></keybind>
-    <keybind key="W-d"><action name="Execute" command="wofi --show drun"/></keybind>
-    <keybind key="A-F2"><action name="Execute" command="wofi --show run"/></keybind>
-    <keybind key="W-e"><action name="Execute" command="pcmanfm"/></keybind>
-    <keybind key="W-l"><action name="Execute" command="dm-tool lock"/></keybind>
-    <keybind key="W-m"><action name="Execute" command="foot -e btop"/></keybind>
-    <keybind key="Print"><action name="Execute" command="sh -c 'grim &quot;$HOME/Pictures/retro-$(date +%F-%H%M%S).png&quot;'"/></keybind>
-    <keybind key="W-F4"><action name="Exit"/></keybind>
+    <chainQuitKey>C-g</chainQuitKey>
+    <keybind key="W-Return"><action name="Execute"><command>lxterminal</command></action></keybind>
+    <keybind key="C-A-t"><action name="Execute"><command>lxterminal</command></action></keybind>
+    <keybind key="W-d"><action name="Execute"><command>jgmenu_run</command></action></keybind>
+    <keybind key="A-F2"><action name="Execute"><command>jgmenu_run</command></action></keybind>
+    <keybind key="W-e"><action name="Execute"><command>pcmanfm</command></action></keybind>
+    <keybind key="W-l"><action name="Execute"><command>dm-tool lock</command></action></keybind>
+    <keybind key="W-m"><action name="Execute"><command>lxterminal -e btop</command></action></keybind>
+    <keybind key="W-F4"><action name="Close"/></keybind>
   </keyboard>
-  <mouse><default/></mouse>
-</labwc_config>
+  <mouse>
+    <context name="Root"><mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind></context>
+    <context name="Titlebar"><mousebind button="Left" action="Drag"><action name="Move"/></mousebind><mousebind button="Right" action="Press"><action name="ShowMenu"><menu>client-menu</menu></action></mousebind></context>
+  </mouse>
+  <menu><file>menu.xml</file><hideDelay>200</hideDelay><middle>no</middle><submenuShowDelay>100</submenuShowDelay><submenuHideDelay>400</submenuHideDelay><manageDesktops>yes</manageDesktops></menu>
+  <applications/>
+</openbox_config>
 EOF
 
-    retro_write "${SKEL}/.config/labwc/themerc-override" 0644 <<'EOF'
-border.width: 2
-window.active.border.color: #00ff9c
-window.inactive.border.color: #3a3f52
-window.active.title.bg.color: #0c0d12
-window.inactive.title.bg.color: #1b1d27
-window.active.label.text.color: #00ff9c
-window.inactive.label.text.color: #e0e0e0
-window.active.button.unpressed.image.color: #00ff9c
-window.inactive.button.unpressed.image.color: #8c93a8
-menu.border.width: 1
-menu.border.color: #00ff9c
-menu.items.bg.color: #0c0d12
-menu.items.text.color: #e0e0e0
-menu.items.active.bg.color: #00ff9c
-menu.items.active.text.color: #0c0d12
-menu.title.bg.color: #1b1d27
-menu.title.text.color: #00ff9c
-EOF
-    retro_write "${SKEL}/.config/labwc/environment" 0644 <<'EOF'
-XKB_DEFAULT_LAYOUT=us
-XCURSOR_THEME=Adwaita
-XCURSOR_SIZE=24
-XDG_CURRENT_DESKTOP=labwc
-XDG_SESSION_TYPE=wayland
-MOZ_ENABLE_WAYLAND=1
-QT_QPA_PLATFORM=wayland;xcb
-GDK_BACKEND=wayland,x11
-SDL_VIDEODRIVER=wayland,x11
-EOF
-
-    retro_write "${SKEL}/.config/labwc/autostart" 0755 <<EOF
+    retro_write /etc/skel/.config/openbox/autostart 0755 <<'EOF'
 #!/bin/sh
-"${RETRO_HELPER_DIR}/retro-session-start" &
+pcmanfm --desktop &
+tint2 &
+nm-applet &
+blueman-applet &
+volumeicon &
+if [ -x /usr/libexec/polkit-mate-authentication-agent-1 ]; then
+    /usr/libexec/polkit-mate-authentication-agent-1 &
+fi
 EOF
 
-    retro_write "${SKEL}/.config/waybar/config" 0644 <<'EOF'
-{
-  "layer": "top",
-  "position": "bottom",
-  "height": 34,
-  "spacing": 8,
-  "modules-left": ["custom/launcher", "clock"],
-  "modules-center": ["cpu", "memory"],
-  "modules-right": ["network", "custom/audio", "tray", "battery"],
-  "custom/launcher": {
-    "format": "  RETRO",
-    "tooltip": false,
-    "on-click": "wofi --show drun"
-  },
-  "clock": {
-    "format": "{:%a %d %b  %H:%M}",
-    "tooltip-format": "{:%A, %d %B %Y}"
-  },
-  "cpu": {
-    "format": "CPU {usage}%",
-    "interval": 5
-  },
-  "memory": {
-    "format": "RAM {used:0.1f}G",
-    "interval": 5
-  },
-  "network": {
-    "format-wifi": "WIFI {essid}",
-    "format-ethernet": "LAN {ifname}",
-    "format-disconnected": "OFFLINE",
-    "tooltip": true,
-    "interval": 5
-  },
-  "custom/audio": {
-    "format": "VOL {}",
-    "exec": "amixer get Master 2>/dev/null | grep -o '[0-9][0-9]*%' | head -n1",
-    "interval": 3,
-    "on-click": "foot -e alsamixer"
-  },
-  "tray": {
-    "icon-size": 16,
-    "spacing": 8
-  },
-  "battery": {
-    "format": "BAT {capacity}%",
-    "format-charging": "CHG {capacity}%",
-    "states": {"warning": 25, "critical": 10}
-  }
-}
+    retro_write /etc/skel/.config/tint2/tint2rc 0644 <<'EOF'
+# Retro OS classic bottom panel: Launcher, Taskbar, System Tray, Clock
+panel_monitor = all
+panel_position = bottom center horizontal
+panel_size = 100% 32
+panel_margin = 0 0
+panel_padding = 4 2 4
+panel_background_id = 1
+panel_items = LTSC
+panel_dock = 0
+panel_layer = bottom
+panel_autohide = 0
+panel_strut = 1
+panel_background = #1b1d27 94
+panel_border_width = 1
+panel_border_color = #3a3f52 100
+rounded = 0
+launcher_padding = 5 2 5
+launcher_background_id = 0
+launcher_icon_size = 24
+launcher_icon_theme = Papirus-Dark
+launcher_item_app = /usr/share/applications/retro-start.desktop
+taskbar_mode = multi_desktop
+taskbar_hide_if_empty = 0
+taskbar_padding = 2 1 2
+taskbar_background_id = 0
+taskbar_active_background_id = 2
+taskbar_name = 0
+taskbar_name_padding = 3 0
+taskbar_name_background_id = 0
+taskbar_name_font = DejaVu Sans 8
+taskbar_name_font_color = #e0e0e0 100
+taskbar_distribute_size = 1
+taskbar_sort_order = none
+taskbar_always_show_all_desktop = 1
+taskbar_show_iconified = 1
+taskbar_show_name = 1
+taskbar_show_icon = 1
+task_icon_size = 20
+task_text = 1
+task_centered = 1
+task_maximum_size = 200 28
+task_padding = 4 2
+task_background_id = 0
+task_active_background_id = 2
+task_urgent_background_id = 3
+systray_padding = 4 2 4
+systray_background_id = 0
+systray_icon_size = 20
+systray_icon_asb = 100 0 0
+clock_font = DejaVu Sans 9
+clock_font_color = #ffffff 100
+clock_padding = 6 2
+clock_background_id = 0
+time1_format = %H:%M
+time2_format = %a %d %b
+clock_tooltip = %A, %d %B %Y
+clock_lclick_command = lxterminal -e date
+tooltip = 1
+tooltip_padding = 4 2
+tooltip_show_timeout = 0.5
+tooltip_hide_timeout = 0.1
+mouse_middle = none
+mouse_right = none
+mouse_scroll_up = toggle
+mouse_scroll_down = iconify
 EOF
 
-    retro_write "${SKEL}/.config/waybar/style.css" 0644 <<'EOF'
-* {
-  font-family: "JetBrains Mono", "DejaVu Sans", sans-serif;
-  font-size: 11px;
-  min-height: 0;
-}
-window#waybar {
-  background: rgba(12, 13, 18, 0.96);
-  color: #e0e0e0;
-  border-top: 1px solid #00ff9c;
-}
-#custom-launcher {
-  color: #0c0d12;
-  background: #00ff9c;
-  font-weight: bold;
-  padding: 0 14px;
-}
-#clock, #cpu, #memory, #network, #custom-audio, #tray, #battery {
-  padding: 0 10px;
-}
-#network.disconnected, #battery.critical {
-  color: #ff0055;
-}
-#battery.warning {
-  color: #ffd166;
-}
-EOF
-
-    retro_write "${SKEL}/.config/wofi/style.css" 0644 <<'EOF'
-window {
-  background-color: #0c0d12;
-  color: #e0e0e0;
-  border: 1px solid #00ff9c;
-  border-radius: 4px;
-}
-#input {
-  margin: 8px;
-  border: 1px solid #00ff9c;
-  background: #1b1d27;
-  color: #e0e0e0;
-}
-#inner-box, #outer-box {
-  margin: 4px;
-  background-color: #0c0d12;
-}
-#entry:selected {
-  background-color: #00ff9c;
-  color: #0c0d12;
-}
-EOF
-
-    retro_write "${SKEL}/.config/foot/foot.ini" 0644 <<EOF
-[main]
-font=${RETRO_FONT_NAME}:size=10
-pad=8x8
-term=xterm-256color
-[colors]
-foreground=${RETRO_FG_COLOR}
-background=${RETRO_BG_COLOR}
-regular0=#1b1d27
-regular1=#ff0055
-regular2=#00ff9c
-regular3=#ffd166
-regular4=#4cc9f0
-regular5=#b388ff
-regular6=#2ec4b6
-regular7=#e0e0e0
-bright0=#3a3f52
-bright1=#ff4d88
-bright2=#5affc0
-bright3=#ffe199
-bright4=#8be0ff
-bright5=#d0b3ff
-bright6=#6ee7d8
-bright7=#ffffff
+    retro_write /etc/skel/.config/jgmenu/jgmenurc 0644 <<'EOF'
+position_mode = center
+menu_width = 420
+menu_height = 520
+menu_padding = 8
+menu_border = 1
+menu_radius = 4
+menu_halign = left
+menu_valign = bottom
+menu_margin_x = 0
+menu_margin_y = 34
+menu_font = DejaVu Sans 10
+menu_icon_size = 24
+color_menu_bg = #1b1d27 96
+color_menu_border = #00ff9c 100
+color_norm_bg = #1b1d27 0
+color_norm_fg = #e0e0e0 100
+color_sel_bg = #00ff9c 100
+color_sel_fg = #0c0d12 100
 EOF
 }
 
@@ -675,7 +589,7 @@ EOF
 }
 
 generate_menus() {
-    retro_info "Generating Labwc root menu for the Wayland desktop"
+    retro_info "Generating Openbox root menu for the X11 desktop"
     "${RETRO_HELPER_DIR}/retro-menu-gen" --system
 }
 
@@ -698,7 +612,7 @@ main() {
     write_skel_theming
     generate_menus
     normalise_skel_permissions
-    retro_ok "=== 02_interface_setup.sh: complete (Labwc + Waybar + Foot) ==="
+    retro_ok "=== 02_interface_setup.sh: complete (Openbox + Tint2 + LXTerminal) ==="
 }
 
 main "$@"
