@@ -790,9 +790,18 @@ configfile /boot/grub/grub.cfg
 EOF
 
     grub-mkstandalone --format=x86_64-efi --output="${work}/bootx64.efi" \
-        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file linux all_video" \
+        --modules="linux normal iso9660 search search_fs_file search_fs_uuid search_label configfile all_video efi_gop efi_uga fat part_gpt part_msdos" \
         --locales="" --fonts="" "boot/grub/grub.cfg=${work}/embedded.cfg" 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${work}/bootx64.efi" ]] || retro_die "grub-mkstandalone produced no bootx64.efi"
+    # Stage every EFI GRUB module as a fallback for firmware that loads grub.cfg from ISO.
+    local grub_module_dir="/usr/lib/grub/x86_64-efi"
+    local grub_iso_module_dir="${IMAGE_DIR}/boot/grub/x86_64-efi"
+    [[ -d "${grub_module_dir}" ]] || retro_die "grub-efi-amd64-bin module directory is missing: ${grub_module_dir}"
+    mkdir -p "${grub_iso_module_dir}"
+    find "${grub_module_dir}" -maxdepth 1 -type f -name '*.mod' -exec cp -f '{}' "${grub_iso_module_dir}/" \;
+    for module in linux normal all_video part_gpt part_msdos iso9660; do
+        [[ -s "${grub_iso_module_dir}/${module}.mod" ]] || retro_die "required GRUB EFI module missing: ${module}.mod"
+    done
 
     efi_size_mb=$(( ( $(stat -c %s "${work}/bootx64.efi") + 1048575 ) / 1048576 + 10 ))
     (( efi_size_mb >= 64 )) || efi_size_mb=64
