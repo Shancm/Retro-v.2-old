@@ -266,7 +266,7 @@ test_payload() {
         fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
     fi
     local b
-    for b in labwc waybar foot wofi swaybg mako lightdm gh pcmanfm nm-applet volumeicon \
+    for b in labwc waybar foot wofi swaybg mako pkexec polkitd lightdm gh pcmanfm nm-applet volumeicon \
              grim slurp wl-copy Xwayland nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
