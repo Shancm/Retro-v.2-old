@@ -847,7 +847,7 @@ cmd_menu() {
     [[ -x "${HELPER_DIR}/retro-menu-gen" ]] || die "retro-menu-gen missing"
     "${HELPER_DIR}/retro-menu-gen" --user "${HOME}"
     if [[ "${EUID}" -eq 0 ]]; then
-        if user_gui labwc --reconfigure 2>/dev/null; then
+        if user_gui openbox --reconfigure 2>/dev/null; then
             ok "Labwc menu reloaded"
         else
             say "Labwc is not reachable (menus apply at next login)"
