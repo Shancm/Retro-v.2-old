@@ -66,9 +66,8 @@ install_grub_btrfs() {
        ! git -C "${src}" remote add origin https://github.com/Antynea/grub-btrfs.git ||
        ! retro_retry 3 5 git -C "${src}" fetch --depth 1 origin "refs/tags/${RETRO_GRUB_BTRFS_PIN}" ||
        ! git -C "${src}" checkout --quiet --detach FETCH_HEAD; then
-        retro_warn "Could not fetch pinned grub-btrfs ${RETRO_GRUB_BTRFS_PIN}; snapshot boot entries will be unavailable"
         rm -rf "${work}"
-        return 0
+        retro_die "Could not fetch pinned grub-btrfs ${RETRO_GRUB_BTRFS_PIN}; refusing to produce an image without the required snapshot boot integration"
     fi
 
     actual="$(git -C "${src}" rev-parse HEAD)"
@@ -79,8 +78,7 @@ install_grub_btrfs() {
 
     if ! make -C "${src}" install; then
         rm -rf "${work}"
-        retro_warn "Pinned grub-btrfs install failed; snapshot boot entries will be unavailable"
-        return 0
+        retro_die "Pinned grub-btrfs ${RETRO_GRUB_BTRFS_PIN} installation failed"
     fi
 
     # Debian paths for grub tooling
