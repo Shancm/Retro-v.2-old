@@ -387,7 +387,7 @@ build_menu() {
     item "Application Launcher" "wofi --show drun"
     item "Terminal (Foot)" "foot"
     item "File Manager" "pcmanfm"
-    have firefox-esr && item "Web Browser" "firefox-esr"
+    if have firefox-esr; then item "Web Browser" "firefox-esr"; fi
     item "Text Editor" "mousepad"
     printf '  <separator/>\n'
     if (( ${#CAT_ORDER[@]} > 0 )); then
@@ -414,7 +414,7 @@ build_menu() {
     item "System Monitor" "foot -e btop"
     item "System Information" "foot -e retro fetch"
     item "Network Connections" "nm-connection-editor"
-    have calamares && item "Install Retro OS" "pkexec calamares"
+    if have calamares; then item "Install Retro OS" "pkexec calamares"; fi
     item "Lock Screen" "dm-tool lock"
     item "Reconfigure Labwc" "labwc --reconfigure"
     item "Log Out" "labwc --exit"
