@@ -143,6 +143,13 @@ install_login_stack() {
     install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf
     install -m 0644 "${TEMPLATE_DIR}/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
     install -m 0644 "${TEMPLATE_DIR}/Xwrapper.config" /etc/X11/Xwrapper.config
+
+    # Earlier builds removed this package-owned PAM service file. Restore it
+    # from the LightDM package when resuming an existing chroot.
+    if [[ ! -s /etc/pam.d/lightdm-autologin ]]; then
+        retro_info "Restoring the package-provided LightDM PAM service files"
+        retro_retry 3 5 apt-get -o Dpkg::Options::=--force-confmiss --reinstall install -y lightdm
+    fi
     rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
 
     echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
