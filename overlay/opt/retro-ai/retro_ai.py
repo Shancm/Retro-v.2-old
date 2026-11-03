@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 
 VERSION = "2.0"
 CONF_PATH = "/etc/retro-os/retro-ai.conf"
@@ -64,9 +65,41 @@ def load_config() -> configparser.SectionProxy:
     cp.read_dict({"watch": DEFAULTS})
     try:
         cp.read(CONF_PATH)
-    except configparser.Error as exc:
+    except (OSError, configparser.Error) as exc:
         print("retro-ai: bad config (%s), using defaults" % exc, file=sys.stderr)
-    return cp["watch"]
+
+    cfg = cp["watch"]
+    bounds = {
+        "interval": (5, 3600),
+        "ram_warn": (1, 99),
+        "ram_crit": (2, 100),
+        "disk_warn_free": (1, 99),
+        "disk_crit_free": (0, 98),
+        "cooldown": (0, 86400),
+        "voice_speed": (80, 300),
+    }
+    for key, (low, high) in bounds.items():
+        try:
+            value = int(cfg.get(key, DEFAULTS[key]))
+            if not low <= value <= high:
+                raise ValueError("out of range")
+        except (TypeError, ValueError):
+            print("retro-ai: invalid %s; using default %s" % (key, DEFAULTS[key]), file=sys.stderr)
+            cfg[key] = DEFAULTS[key]
+
+    try:
+        cfg.getboolean("voice")
+    except ValueError:
+        print("retro-ai: invalid voice; using default %s" % DEFAULTS["voice"], file=sys.stderr)
+        cfg["voice"] = DEFAULTS["voice"]
+
+    if cfg.getint("ram_warn") >= cfg.getint("ram_crit"):
+        cfg["ram_warn"] = DEFAULTS["ram_warn"]
+        cfg["ram_crit"] = DEFAULTS["ram_crit"]
+    if cfg.getint("disk_warn_free") <= cfg.getint("disk_crit_free"):
+        cfg["disk_warn_free"] = DEFAULTS["disk_warn_free"]
+        cfg["disk_crit_free"] = DEFAULTS["disk_crit_free"]
+    return cfg
 
 
 def read_env_file(path: str) -> dict:
@@ -172,15 +205,8 @@ def network_state() -> tuple:
     route = run(["ip", "route", "show", "default"])
     if not route:
         return False, False
-    old = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(3)
-    try:
-        socket.gethostbyname("deb.debian.org")
-        dns = True
-    except OSError:
-        dns = False
-    finally:
-        socket.setdefaulttimeout(old)
+    # getent uses the system NSS stack and is bounded by subprocess timeout.
+    dns = bool(run(["getent", "hosts", "deb.debian.org"], timeout=5))
     return True, dns
 
 
@@ -252,9 +278,18 @@ def audit(cfg: configparser.SectionProxy) -> list:
     else:
         res.append(("OK", "Compositor", "picom %s (policy: %s)" % ("running" if picom_running else "off", prof.get("RETRO_PICOM", "?")), ""))
 
-    errs = run(["journalctl", "-b", "-p", "err", "-q", "--no-pager"], timeout=20).count("\n")
-    res.append(("OK" if errs < 20 else "WARN", "Journal", "%d error line(s) this boot" % errs,
-                "review: journalctl -b -p err" if errs >= 20 else ""))
+    try:
+        journal = subprocess.run(["journalctl", "-b", "-p", "err", "-q", "--no-pager"],
+                                 capture_output=True, text=True, timeout=20, check=False)
+        denied = re.search(r"permission denied|not seeing messages|access denied", journal.stderr, re.I)
+        if journal.returncode != 0 or denied:
+            raise OSError("journal is not readable")
+        errs = sum(1 for line in journal.stdout.splitlines() if line.strip())
+        res.append(("OK" if errs < 20 else "WARN", "Journal", "%d error line(s) this boot" % errs,
+                    "review: journalctl -b -p err" if errs >= 20 else ""))
+    except (OSError, subprocess.TimeoutExpired):
+        res.append(("WARN", "Journal", "unknown (journal is unreadable or unavailable)",
+                    "check journal permissions and systemd-journald"))
     return res
 
 
@@ -296,12 +331,14 @@ def have_sound() -> bool:
 
 def speak(text: str, speed: str = "150") -> bool:
     global _voice_proc
+    if not re.fullmatch(r"[0-9]{2,3}", str(speed)) or not 80 <= int(speed) <= 300:
+        return False
     if not shutil.which("espeak-ng") or not have_sound():
         return False
     if _voice_proc is not None and _voice_proc.poll() is None:
         return False  # still talking: never queue up
     try:
-        _voice_proc = subprocess.Popen(["espeak-ng", "-s", speed, text],
+        _voice_proc = subprocess.Popen(["espeak-ng", "-s", str(speed), "--", text],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except OSError:
@@ -314,6 +351,13 @@ def log_alert(level: str, msg: str) -> None:
     print(line, flush=True)
     try:
         os.makedirs(RUN_DIR, exist_ok=True)
+        if os.path.isfile(ALERT_LOG) and os.path.getsize(ALERT_LOG) >= 256 * 1024:
+            rotated = ALERT_LOG + ".1"
+            try:
+                os.unlink(rotated)
+            except FileNotFoundError:
+                pass
+            os.replace(ALERT_LOG, rotated)
         with open(ALERT_LOG, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
     except OSError:
@@ -321,16 +365,19 @@ def log_alert(level: str, msg: str) -> None:
 
 
 def classify(value: float, warn: float, crit: float, prev: str, high_is_bad: bool) -> str:
-    """Threshold classification with 3-point hysteresis so alerts do not flap."""
+    """Classify severity with a 3-point release hysteresis for RAM and free disk."""
+    severity = value if high_is_bad else -value
+    warn_at = warn if high_is_bad else -warn
+    crit_at = crit if high_is_bad else -crit
     margin = 3.0
-    if not high_is_bad:
-        value, warn, crit, margin = -value, -warn, -crit, -3.0
-    if value >= crit:
+    if severity >= crit_at:
         return "crit"
-    if value >= warn:
-        return "warn" if prev != "crit" or value < crit - margin else "crit"
-    if prev in ("warn", "crit") and value >= warn - margin:
-        return prev
+    if prev == "crit" and severity >= crit_at - margin:
+        return "crit"
+    if severity >= warn_at:
+        return "warn"
+    if prev == "warn" and severity >= warn_at - margin:
+        return "warn"
     return "ok"
 
 
@@ -370,21 +417,30 @@ def cmd_watch(args: argparse.Namespace) -> int:
             cfg = load_config()
             log_alert("info", "configuration reloaded")
 
-        pct, used, total = ram_stats()
-        ram_level = classify(pct, cfg.getfloat("ram_warn"), cfg.getfloat("ram_crit"), state["ram"], True)
-        handle("ram", ram_level, "Memory usage is %.0f percent" % pct, "Run retro boost")
-
-        free_pct, _, _ = disk_free_pct("/")
-        disk_level = classify(free_pct, cfg.getfloat("disk_warn_free"), cfg.getfloat("disk_crit_free"), state["disk"], False)
-        handle("disk", disk_level, "Only %.0f percent disk space is free" % free_pct, "Run retro doctor")
-
         try:
+            pct, used, total = ram_stats()
+            ram_level = classify(pct, cfg.getfloat("ram_warn"), cfg.getfloat("ram_crit"), state["ram"], True)
+            handle("ram", ram_level, "Memory usage is %.0f percent" % pct, "Run retro boost")
+            free_pct, _, _ = disk_free_pct("/")
+            disk_level = classify(free_pct, cfg.getfloat("disk_warn_free"), cfg.getfloat("disk_crit_free"), state["disk"], False)
+            handle("disk", disk_level, "Only %.0f percent disk space is free" % free_pct, "Run retro doctor")
+
             os.makedirs(RUN_DIR, exist_ok=True)
-            with open(STATUS_JSON, "w", encoding="utf-8") as fh:
-                json.dump({"time": int(time.time()), "ram_pct": round(pct, 1), "disk_free_pct": round(free_pct, 1),
-                           "ram_state": state["ram"], "disk_state": state["disk"]}, fh)
-        except OSError:
-            pass
+            fd, tmp_path = tempfile.mkstemp(prefix=".status.", suffix=".tmp", dir=RUN_DIR)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump({"time": int(time.time()), "ram_pct": round(pct, 1), "disk_free_pct": round(free_pct, 1),
+                               "ram_state": state["ram"], "disk_state": state["disk"]}, fh)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp_path, STATUS_JSON)
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except FileNotFoundError:
+                    pass
+        except (OSError, ValueError, KeyError, ZeroDivisionError) as exc:
+            log_alert("warn", "watch probe failed; will retry: %s" % exc)
         stop.wait(cfg.getint("interval"))
 
     log_alert("info", "Retro AI watchdog stopped")
@@ -438,7 +494,7 @@ INTENTS = [
 
 class Companion(cmd.Cmd):
     intro = ""
-    prompt = "%sretro-ai>%s " % (C["mint"], C["rst"])
+    prompt = "\\001%s\\002retro-ai>\\001%s\\002 " % (C["mint"], C["rst"])
 
     def __init__(self) -> None:
         super().__init__()
@@ -585,7 +641,7 @@ You can also just ask: "why is my pc slow?", "is the internet working?", "am I l
 def cmd_shell(args: argparse.Namespace) -> int:
     try:
         Companion().cmdloop()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print()
     return 0
 
@@ -603,10 +659,20 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_say(args: argparse.Namespace) -> int:
-    ok = speak(" ".join(args.text), load_config()["voice_speed"])
-    if ok and _voice_proc is not None:
-        _voice_proc.wait(timeout=30)
-    return 0 if ok else 1
+    if not speak(" ".join(args.text), load_config()["voice_speed"]):
+        return 1
+    if _voice_proc is not None:
+        try:
+            _voice_proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            _voice_proc.terminate()
+            try:
+                _voice_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                _voice_proc.kill()
+                _voice_proc.wait()
+            return 1
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
