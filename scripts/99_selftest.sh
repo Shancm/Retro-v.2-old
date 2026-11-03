@@ -185,7 +185,7 @@ test_home() {
                 python3 -c "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])" "${base}/${f}"
         done
         check "${base}/.config/waybar/config is valid JSON" "fix Waybar JSON config" \
-            python3 -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "${base}/.config/waybar/config"
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${base}/.config/waybar/config"
         if grep -q 'foot --hold -e bash -lc' "${base}/.config/labwc/menu.xml"; then
             pass "${base}/Labwc CLI menu entries open in persistent Foot terminals"
         else
