@@ -162,7 +162,8 @@ if [[ -n "${new_user}" ]]; then
 fi
 
 # 3. Live-only units / packages
-systemctl disable retro-live-fixup.service retro-boot-report.service >/dev/null 2>&1 || true
+systemctl disable retro-live-fixup.service retro-live-credentials.service retro-boot-report.service >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/retro-live-fixup.service /etc/systemd/system/retro-live-credentials.service
 step "purging live-boot / live-config / installer"
 DEBIAN_FRONTEND=noninteractive apt-get purge -y live-boot live-boot-initramfs-tools \
     live-config live-config-systemd calamares calamares-settings-debian >/dev/null 2>&1 || true
@@ -217,7 +218,6 @@ defaultGroups:
     - plugdev
     - netdev
     - wireshark
-autologinGroup: autologin
 sudoersGroup: sudo
 setRootPassword: false
 EOF
