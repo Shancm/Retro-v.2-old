@@ -116,10 +116,14 @@ install_github_cli() {
 
     local gh_version
     gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
-    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+    if [[ ! "${gh_version}" =~ ^[0-9]+([:.~+_-][A-Za-z0-9.+:~_-]+)*$ ]] ||
+       ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
         retro_die "GitHub CLI ${gh_version:-unknown} is too old or invalid; version 2.67.0+ is required for secure artifact attestation verification"
     fi
-    retro_ok "GitHub CLI ${gh_version} supports patched artifact attestation verification"
+    if ! gh attestation verify --help >/dev/null 2>&1; then
+        retro_die "GitHub CLI ${gh_version} does not expose 'gh attestation verify'; install the official GitHub CLI package"
+    fi
+    retro_ok "GitHub CLI ${gh_version} supports secure artifact attestation verification"
 }
 
 # -----------------------------------------------------------------------------
