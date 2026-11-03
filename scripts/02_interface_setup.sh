@@ -184,7 +184,7 @@ start_once swaybg swaybg -i /usr/share/backgrounds/retro-os/wallpaper.png -m fil
 sleep 0.3
 start_once waybar waybar
 start_once mako mako
-start_once polkit-mate-authentication-agent-1 /usr/lib/mate-polkit/polkit-mate-authentication-agent-1
+start_once polkit-mate-authentication-agent-1 /usr/libexec/polkit-mate-authentication-agent-1
 start_once nm-applet nm-applet --indicator
 start_once volumeicon volumeicon
 start_once blueman-applet blueman-applet
