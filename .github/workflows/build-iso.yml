@@ -80,13 +80,15 @@ jobs:
             test -x overlay/opt/retro-ai/retro_ai.py
           fi
       - name: Bash syntax
-        run: >-
+        run: |
+          set -Eeuo pipefail
           bash -n build.sh test_iso.sh scripts/*.sh
-          overlay/usr/local/bin/retro
+          bash -n overlay/usr/local/bin/retro
       - name: ShellCheck
-        run: >-
+        run: |
+          set -Eeuo pipefail
           shellcheck -x build.sh test_iso.sh scripts/*.sh
-          overlay/usr/local/bin/retro
+          shellcheck -x overlay/usr/local/bin/retro
       - name: YAML lint
         run: yamllint -s .github/workflows
       - name: Python unit tests
