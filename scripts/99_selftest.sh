@@ -178,7 +178,6 @@ test_home() {
     check "/etc/skel owned by root" "chown -R root:root /etc/skel" test "$(stat -c %U /etc/skel)" = root
 
     local base f
-    local base f
     for base in /etc/skel "${HOME_DIR}"; do
         for f in .config/openbox/rc.xml .config/openbox/menu.xml .config/openbox/autostart \
                  .config/tint2/tint2rc .config/jgmenu/jgmenurc; do
