@@ -51,7 +51,7 @@ printf '%s\n' "${TEST_DPKG_VERSION}"
 MOCK
 cat > "${MOCKBIN}/gh" <<'MOCK'
 #!/usr/bin/env bash
-[[ "${1:-}" == "--version" && -n "${TEST_GH_VERSION:-}" ]] || exit 1
+[[ "${1:-}" == "version" && -n "${TEST_GH_VERSION:-}" ]] || exit 1
 printf 'gh version %s (test)\n' "${TEST_GH_VERSION}"
 MOCK
 chmod +x "${MOCKBIN}/dpkg-query" "${MOCKBIN}/gh"
