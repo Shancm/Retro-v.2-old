@@ -186,7 +186,7 @@ test_home() {
         done
         check "${base}/.config/waybar/config is valid JSON" "fix Waybar JSON config" \
             python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${base}/.config/waybar/config"
-        if grep -q 'foot --hold -e bash -lc' "${base}/.config/labwc/menu.xml"; then
+        if grep -q "foot --hold -e bash -lc" "${base}/.config/labwc/menu.xml"; then
             pass "${base}/Labwc CLI menu entries open in persistent Foot terminals"
         else
             fail "${base}/Labwc CLI menu entries open in persistent Foot terminals" "retro-menu-gen --system/--user"
