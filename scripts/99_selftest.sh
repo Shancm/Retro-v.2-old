@@ -83,7 +83,7 @@ test_login_stack() {
     retro_info "[2/7] LightDM / PAM / session files"
     local f
     check "no LightDM autologin PAM bypass" "remove /etc/pam.d/lightdm-autologin" test ! -e /etc/pam.d/lightdm-autologin
-    if grep -RqsE 'pam_permit\\.so|nopasswdlogin' /etc/pam.d/lightdm* 2>/dev/null; then
+    if grep -RqsE 'pam_permit[.]so|nopasswdlogin' /etc/pam.d/lightdm* 2>/dev/null; then
         fail "LightDM has no permissive PAM bypass" "restore the package-provided LightDM PAM stack"
     else
         pass "LightDM has no permissive PAM bypass"
