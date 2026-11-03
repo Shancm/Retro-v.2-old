@@ -155,7 +155,7 @@ EOF
 need_root() {
     if [[ "${EUID}" -ne 0 ]]; then
         command -v sudo >/dev/null 2>&1 || die "this command needs root and sudo is not installed"
-        exec sudo -E -- "${SELF}" "${ORIG_ARGS[@]}"
+        exec sudo -- "${SELF}" "${ORIG_ARGS[@]}"
     fi
 }
 
@@ -181,8 +181,12 @@ user_gui() {   # run a command as the desktop user with the GUI environment
 
 start_log() {   # <name>
     if [[ "${EUID}" -eq 0 ]]; then
-        mkdir -p /var/log/retro-os
-        exec > >(tee -a "/var/log/retro-os/$1.log") 2>&1
+        local logfile="/var/log/retro-os/$1.log"
+        mkdir -p /var/log/retro-os || die "cannot create /var/log/retro-os"
+        MINT="" CRIM="" CYAN="" DIM="" BOLD="" RST=""
+        export NO_COLOR=1
+        exec > >(sed -u -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' | tee -a "${logfile}") 2>&1
+        trap 'sync -f "${logfile}" 2>/dev/null || true' EXIT
     fi
 }
 
@@ -254,10 +258,14 @@ cmd_share() {
     local file="" port=8000 once=0 ascii=0 bind="0.0.0.0"
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --port)  port="${2:-}"; shift 2 ;;
-            --once)  once=1; shift ;;
+            --port)
+                [[ $# -ge 2 && -n "$2" ]] || die "--port requires a port number"
+                port="$2"; shift 2 ;;
+            --once) once=1; shift ;;
             --ascii) ascii=1; shift ;;
-            --bind)  bind="${2:-}"; shift 2 ;;
+            --bind)
+                [[ $# -ge 2 && -n "$2" ]] || die "--bind requires an address"
+                bind="$2"; shift 2 ;;
             -h|--help) echo "usage: retro share <file> [--port N] [--once] [--ascii] [--bind IP]"; return 0 ;;
             -*) die "unknown option: $1" ;;
             *)  [[ -z "${file}" ]] || die "only one file can be shared"; file="$1"; shift ;;
@@ -273,6 +281,7 @@ cmd_share() {
 import http.server
 import mimetypes
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -281,6 +290,8 @@ import threading
 import urllib.parse
 
 path, port, bind, once, ascii_mode = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4] == "1", sys.argv[5] == "1"
+token = secrets.token_urlsafe(24)
+token_path = "/" + token
 path = os.path.abspath(path)
 name = os.path.basename(path)
 quoted = urllib.parse.quote(name)
@@ -323,11 +334,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _route(self, with_body):
         req = urllib.parse.unquote(self.path.split("?", 1)[0])
-        if req == "/":
-            self.send_response(302)
-            self.send_header("Location", "/" + quoted)
-            self.end_headers()
-        elif req == "/" + name:
+        if req == token_path or req == token_path + "/" + quoted:
             self._send(with_body)
         else:
             self.send_error(404)
@@ -340,7 +347,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 httpd = None
-for candidate in range(port, port + 50):
+for candidate in range(port, min(port + 50, 65536)):
     try:
         httpd = http.server.ThreadingHTTPServer((bind, candidate), Handler)
         port = candidate
@@ -351,7 +358,7 @@ if httpd is None:
     sys.exit("retro share: no free port in %d-%d" % (port, port + 49))
 
 host = lan_ip() if bind in ("0.0.0.0", "") else bind
-url = "http://%s:%d/%s" % (host, port, quoted)
+url = "http://%s:%d%s/%s" % (host, port, token_path, quoted)
 print("\n  Sharing : %s (%.1f MiB)" % (name, os.path.getsize(path) / 1048576))
 print("  URL     : %s" % url)
 print("  Scan the QR code with your phone (same network). Ctrl+C to stop.\n")
@@ -434,85 +441,170 @@ apt_update_with_repair() {
 }
 
 update_scripts() {
-    if [[ -z "${RETRO_UPDATE_URL}" ]]; then
-        warn "RETRO_UPDATE_URL is empty in ${CONF_FILE} - skipping local script sync"
+    [[ -n "${RETRO_UPDATE_URL}" ]] || {
+        warn "RETRO_UPDATE_URL is empty in ${CONF_FILE} - script sync skipped"
         return 0
-    fi
-    local tmp stamp backup rel src
-    tmp="$(mktemp -d)"
+    }
+
+    local tmp stamp backup rel src dest_root url file_mode=0 want got
+    url="${RETRO_UPDATE_URL}"
+    case "${url}" in
+        https://*) ;;
+        file://*)
+            [[ "${RETRO_UPDATE_ALLOW_FILE:-0}" == "1" ]] || {
+                warn "file:// updates are disabled (set RETRO_UPDATE_ALLOW_FILE=1 only for tests)"
+                return 1
+            }
+            file_mode=1
+            ;;
+        *) warn "update URL must use HTTPS"; return 1 ;;
+    esac
+
+    tmp="$(mktemp -d)" || return 1
     stamp="$(date +%Y%m%d-%H%M%S)"
-    backup="/var/lib/retro-os/backup/${stamp}"
+    dest_root="${RETRO_UPDATE_DEST_ROOT:-/}"
+    [[ "${dest_root}" == "/" ]] || mkdir -p "${dest_root}"
+    backup="${dest_root%/}/var/lib/retro-os/backup/${stamp}"
 
-    say "downloading ${RETRO_UPDATE_URL}"
-    curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "${tmp}/pkg.tar.gz" "${RETRO_UPDATE_URL}" \
-        || { warn "download failed - local scripts unchanged"; rm -rf "${tmp}"; return 1; }
+    say "downloading authenticated script archive"
+    if ! curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "${tmp}/pkg.tar.gz" "${url}"; then
+        warn "download failed - local scripts unchanged"
+        rm -rf "${tmp}"; return 1
+    fi
+    if ! curl -fsSL --connect-timeout 15 --max-time 30 -o "${tmp}/pkg.sha256" "${url}.sha256"; then
+        warn "missing mandatory adjacent .sha256 - refusing update"
+        rm -rf "${tmp}"; return 1
+    fi
+    want="$(awk 'NF {print $1; exit}' "${tmp}/pkg.sha256")"
+    got="$(sha256sum "${tmp}/pkg.tar.gz" | awk '{print $1}')"
+    if [[ ! "${want}" =~ ^[[:xdigit:]]{64}$ || "${want,,}" != "${got}" ]]; then
+        warn "SHA-256 mismatch or malformed checksum - refusing update"
+        rm -rf "${tmp}"; return 1
+    fi
+    gzip -t "${tmp}/pkg.tar.gz" || {
+        warn "download is not a valid gzip archive"
+        rm -rf "${tmp}"; return 1
+    }
 
-    if [[ -z "${RETRO_UPDATE_REPO:-}" ]]; then
-        warn "RETRO_UPDATE_REPO is empty - refusing update without an explicit publisher identity"
-        rm -rf "${tmp}"; return 1
-    fi
-    if ! command -v gh >/dev/null 2>&1; then
-        warn "GitHub CLI is unavailable - refusing update without publisher attestation verification"
-        rm -rf "${tmp}"; return 1
-    fi
-    local gh_version
-    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
-    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
-        warn "GitHub CLI 2.67.0+ is required for secure update attestation verification"
-        rm -rf "${tmp}"; return 1
-    fi
-    if ! gh attestation verify "${tmp}/pkg.tar.gz" --repo "${RETRO_UPDATE_REPO}" >/dev/null 2>&1; then
-        warn "GitHub artifact attestation failed for ${RETRO_UPDATE_REPO} - refusing update"
-        rm -rf "${tmp}"; return 1
-    fi
-    if curl -fsSL --connect-timeout 15 --max-time 30 -o "${tmp}/pkg.sha256" "${RETRO_UPDATE_URL}.sha256" 2>/dev/null; then
-        local want got
-        want="$(awk '{print $1; exit}' "${tmp}/pkg.sha256")"
-        got="$(sha256sum "${tmp}/pkg.tar.gz" | awk '{print $1}')"
-        [[ "${want}" =~ ^[[:xdigit:]]{64}$ && "${want,,}" == "${got}" ]] || { warn "SHA-256 mismatch - refusing to apply update"; rm -rf "${tmp}"; return 1; }
-        ok "GitHub attestation and SHA-256 verified"
+    if (( ! file_mode )); then
+        if [[ -z "${RETRO_UPDATE_REPO:-}" ]] || ! command -v gh >/dev/null 2>&1; then
+            warn "publisher identity or GitHub CLI missing - refusing update"
+            rm -rf "${tmp}"; return 1
+        fi
+        local ghv
+        ghv="$(dpkg-query -W -f='${Version}' gh 2>/dev/null || gh --version 2>/dev/null | awk 'NR==1 {print $3}')"
+        if [[ -z "${ghv}" ]] || ! dpkg --compare-versions "${ghv}" ge 2.67.0; then
+            warn "GitHub CLI 2.67.0+ is required for artifact attestation verification"
+            rm -rf "${tmp}"; return 1
+        fi
+        if ! gh attestation verify "${tmp}/pkg.tar.gz" --repo "${RETRO_UPDATE_REPO}" >/dev/null 2>&1; then
+            warn "GitHub artifact attestation failed for ${RETRO_UPDATE_REPO}"
+            rm -rf "${tmp}"; return 1
+        fi
+        ok "GitHub publisher attestation and SHA-256 verified"
     else
-        warn "no .sha256 published next to the tarball - refusing an unauthenticated update"
-        rm -rf "${tmp}"
-        return 1
+        ok "test-only local archive SHA-256 verified (attestation intentionally bypassed)"
     fi
 
-    if tar -tzf "${tmp}/pkg.tar.gz" | grep -qE '(^/|(^|/)\.\.(/|$))'; then
-        warn "tarball contains absolute or parent-relative paths - refusing"
+    if ! python3 - "${tmp}/pkg.tar.gz" <<'PY'
+import pathlib
+import sys
+import tarfile
+
+allowed = ("opt/retro-os", "opt/retro-ai", "usr/local/bin/retro")
+seen = set()
+try:
+    with tarfile.open(sys.argv[1], "r:gz") as archive:
+        for member in archive.getmembers():
+            name = member.name.rstrip("/")
+            path = pathlib.PurePosixPath(name)
+            if not name or path.is_absolute() or ".." in path.parts:
+                raise ValueError("absolute or parent-relative archive path: " + member.name)
+            if not any(name == root or name.startswith(root + "/") for root in allowed):
+                raise ValueError("archive path is outside the update allow-list: " + member.name)
+            if member.issym() or member.islnk() or member.isdev() or not (member.isfile() or member.isdir()):
+                raise ValueError("links/devices/special files are forbidden: " + member.name)
+            if name in seen:
+                raise ValueError("duplicate archive member: " + name)
+            seen.add(name)
+    if not seen:
+        raise ValueError("empty update archive")
+except (OSError, tarfile.TarError, ValueError) as exc:
+    print("retro update: " + str(exc), file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+        warn "archive path/type validation failed - refusing update"
         rm -rf "${tmp}"; return 1
     fi
+
     mkdir -p "${tmp}/x"
-    tar -xzf "${tmp}/pkg.tar.gz" -C "${tmp}/x" --no-same-owner
+    if ! tar -xzf "${tmp}/pkg.tar.gz" -C "${tmp}/x" --no-same-owner --no-same-permissions; then
+        warn "archive extraction failed - local scripts unchanged"
+        rm -rf "${tmp}"; return 1
+    fi
+
+    # Validate every executable source before touching the installed tree.
+    if [[ -f "${tmp}/x/usr/local/bin/retro" ]] && ! bash -n "${tmp}/x/usr/local/bin/retro"; then
+        warn "retro CLI syntax check failed - refusing update"
+        rm -rf "${tmp}"; return 1
+    fi
+    while IFS= read -r -d '' src; do
+        if ! bash -n "${src}"; then
+            warn "shell syntax check failed: ${src}"
+            rm -rf "${tmp}"; return 1
+        fi
+    done < <(find "${tmp}/x/opt/retro-os" -type f -name '*.sh' -print0 2>/dev/null || true)
+    while IFS= read -r -d '' src; do
+        if ! python3 - "${src}" <<'PY'
+import ast
+import pathlib
+import sys
+ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), filename=sys.argv[1])
+PY
+        then
+            warn "Python syntax check failed: ${src}"
+            rm -rf "${tmp}"; return 1
+        fi
+    done < <(find "${tmp}/x/opt/retro-ai" -type f -name '*.py' -print0 2>/dev/null || true)
 
     mkdir -p "${backup}"
     for rel in opt/retro-os opt/retro-ai usr/local/bin/retro; do
         src="${tmp}/x/${rel}"
         [[ -e "${src}" ]] || continue
-        if [[ -e "/${rel}" ]]; then
+        if [[ -e "${dest_root%/}/${rel}" ]]; then
             mkdir -p "${backup}/$(dirname "${rel}")"
-            cp -a "/${rel}" "${backup}/${rel}"
+            cp -a "${dest_root%/}/${rel}" "${backup}/${rel}" || {
+                warn "backup failed for ${rel}; refusing update"
+                rm -rf "${tmp}"; return 1
+            }
         fi
     done
 
-    # menu.d lists are user-editable: add new files, never overwrite existing ones
+    # Preserve user-edited menu definitions: add new entries, never overwrite.
     if [[ -d "${tmp}/x/opt/retro-os/menu.d" ]]; then
-        mkdir -p /opt/retro-os/menu.d
-        cp -n "${tmp}/x/opt/retro-os/menu.d/"* /opt/retro-os/menu.d/ 2>/dev/null || true
+        mkdir -p "${dest_root%/}/opt/retro-os/menu.d"
+        cp -n "${tmp}/x/opt/retro-os/menu.d/"* "${dest_root%/}/opt/retro-os/menu.d/" 2>/dev/null || true
         rm -rf "${tmp}/x/opt/retro-os/menu.d"
     fi
-    [[ -d "${tmp}/x/opt/retro-os" ]] && cp -a --no-preserve=ownership "${tmp}/x/opt/retro-os/." /opt/retro-os/
-    [[ -d "${tmp}/x/opt/retro-ai" ]] && cp -a --no-preserve=ownership "${tmp}/x/opt/retro-ai/." /opt/retro-ai/
+    [[ ! -d "${tmp}/x/opt/retro-os" ]] || {
+        mkdir -p "${dest_root%/}/opt/retro-os"
+        cp -a --no-preserve=ownership "${tmp}/x/opt/retro-os/." "${dest_root%/}/opt/retro-os/" || { rm -rf "${tmp}"; return 1; }
+    }
+    [[ ! -d "${tmp}/x/opt/retro-ai" ]] || {
+        mkdir -p "${dest_root%/}/opt/retro-ai"
+        cp -a --no-preserve=ownership "${tmp}/x/opt/retro-ai/." "${dest_root%/}/opt/retro-ai/" || { rm -rf "${tmp}"; return 1; }
+    }
     if [[ -f "${tmp}/x/usr/local/bin/retro" ]]; then
-        # atomic replace (new inode) so this running instance is not corrupted
-        install -m 0755 "${tmp}/x/usr/local/bin/retro" /usr/local/bin/.retro.new
-        mv -f /usr/local/bin/.retro.new /usr/local/bin/retro
+        mkdir -p "${dest_root%/}/usr/local/bin"
+        install -m 0755 "${tmp}/x/usr/local/bin/retro" "${dest_root%/}/usr/local/bin/.retro.new" || { rm -rf "${tmp}"; return 1; }
+        mv -f "${dest_root%/}/usr/local/bin/.retro.new" "${dest_root%/}/usr/local/bin/retro" || { rm -rf "${tmp}"; return 1; }
     fi
-    chmod 0755 /opt/retro-os/bin/* 2>/dev/null || true
-    chmod 0750 /opt/retro-os/bin/retro-live-fixup 2>/dev/null || true
-    ok "local scripts updated (previous versions saved in ${backup})"
+    chmod 0755 "${dest_root%/}/opt/retro-os/bin/"* 2>/dev/null || true
+    chmod 0750 "${dest_root%/}/opt/retro-os/bin/retro-live-fixup" 2>/dev/null || true
     rm -rf "${tmp}"
+    ok "local scripts updated; previous versions backed up in ${backup}"
 }
-
 cmd_update() {
     local do_apt=1 do_tools=0 force=0 arg
     for arg in "$@"; do
@@ -564,7 +656,7 @@ cmd_update() {
     fi
 
     say "3/5 syncing local scripts"
-    update_scripts || warn "script sync did not complete"
+    update_scripts || die "script sync failed; no success will be reported (see warnings above)"
 
     if (( do_tools )); then
         say "4/5 refreshing modern Go/Rust tools"
