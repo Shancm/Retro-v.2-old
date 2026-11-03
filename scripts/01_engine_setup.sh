@@ -5,7 +5,6 @@
 #   * apt sources / policy / slimming
 #   * base system, kernel, microcode, firmware, live-boot + live-config
 #   * user "retro" (UID 1000), groups, sudo, unlocked shadow entry
-#   * adaptive hardware profile engine: ZRAM, sysctl, EarlyOOM, Picom switch
 #   * journald / service trimming, release metadata
 # =============================================================================
 set -Eeuo pipefail
@@ -278,14 +277,12 @@ RETRO_LOW_SWAPPINESS="${RETRO_LOW_SWAPPINESS}"
 RETRO_LOW_DIRTY_BG_RATIO="${RETRO_LOW_DIRTY_BG_RATIO}"
 RETRO_LOW_DIRTY_RATIO="${RETRO_LOW_DIRTY_RATIO}"
 RETRO_LOW_EARLYOOM_ARGS="${RETRO_LOW_EARLYOOM_ARGS}"
-RETRO_LOW_PICOM="${RETRO_LOW_PICOM}"
 
 RETRO_STD_ZRAM_PCT="${RETRO_STD_ZRAM_PCT}"
 RETRO_STD_SWAPPINESS="${RETRO_STD_SWAPPINESS}"
 RETRO_STD_DIRTY_BG_RATIO="${RETRO_STD_DIRTY_BG_RATIO}"
 RETRO_STD_DIRTY_RATIO="${RETRO_STD_DIRTY_RATIO}"
 RETRO_STD_EARLYOOM_ARGS="${RETRO_STD_EARLYOOM_ARGS}"
-RETRO_STD_PICOM="${RETRO_STD_PICOM}"
 
 RETRO_UPDATE_URL="${RETRO_UPDATE_URL}"
 RETRO_UPDATE_REPO="${RETRO_UPDATE_REPO}"
@@ -342,14 +339,12 @@ detect() {
         DIRTY_BG="${RETRO_LOW_DIRTY_BG_RATIO:-5}"
         DIRTY="${RETRO_LOW_DIRTY_RATIO:-10}"
         OOM_ARGS="${RETRO_LOW_EARLYOOM_ARGS:--m 4 -s 8}"
-        PICOM="${RETRO_LOW_PICOM:-off}"
     else
         ZRAM_PCT="${RETRO_STD_ZRAM_PCT:-50}"
         SWAPPINESS="${RETRO_STD_SWAPPINESS:-60}"
         DIRTY_BG="${RETRO_STD_DIRTY_BG_RATIO:-8}"
         DIRTY="${RETRO_STD_DIRTY_RATIO:-20}"
         OOM_ARGS="${RETRO_STD_EARLYOOM_ARGS:--m 6 -s 10}"
-        PICOM="${RETRO_STD_PICOM:-on}"
     fi
     LOWCPU=0
     (( CPUS <= 2 )) && LOWCPU=1
@@ -411,7 +406,6 @@ apply_sysctl() {
 }
 
 apply_earlyoom() {
-    local protect='^(Xorg|openbox|lightdm|systemd|dbus-daemon|tint2|NetworkManager)$'
     local tmp
     tmp="$(mktemp /etc/default/.earlyoom.XXXXXX)"
     {
@@ -436,7 +430,7 @@ RETRO_ZRAM_STATE=${ZRAM_STATE:-unknown}
 RETRO_ZRAM_ALGO=${ZRAM_ALGO_USED:-n/a}
 RETRO_SWAPPINESS=${SWAPPINESS}
 RETRO_EARLYOOM_ARGS="${OOM_ARGS}"
-RETRO_PICOM=${PICOM}
+RETRO_COMPOSITOR=labwc
 EOT
     chmod 0644 "${PROFILE_ENV}.tmp"
     mv -f "${PROFILE_ENV}.tmp" "${PROFILE_ENV}"
@@ -446,7 +440,6 @@ cmd="${1:-apply}"
 case "${cmd}" in
     apply|start)
         detect
-        log "tier=${TIER} (${REASON}) ram=${RAM_MB}MiB cpus=${CPUS} compositor=${PICOM}"
         apply_zram
         apply_sysctl
         apply_earlyoom
