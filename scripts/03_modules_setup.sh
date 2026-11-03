@@ -273,10 +273,18 @@ stage_tool() {
     fi
 
     status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}")"
-    if [[ "${status}" != "verified" ]]; then
-        warn "${name}: attestation/checksum status is ${status}; refusing to install an unauthenticated release asset"
-        rm -rf "${work}"; return 1
-    fi
+    case "${status}" in
+        verified|verified-attested)
+            ;;
+        MISMATCH)
+            warn "${name}: SHA-256 MISMATCH; refusing this release as potentially compromised"
+            rm -rf "${work}"; return 2
+            ;;
+        *)
+            warn "${name}: integrity could not be authenticated (${status}); skipping this optional binary"
+            rm -rf "${work}"; return 1
+            ;;
+    esac
 
     extract_archive "${work}/${asset_name}" "${work}/x"
     bin_path="$(find "${work}/x" -type f -name "${BIN}" | head -n1)"
@@ -314,17 +322,25 @@ main() {
     done
     [[ ${#wanted[@]} -gt 0 ]] || wanted=("${ALL_TOOLS[@]}")
 
-    local t failed=0
+    local t failed=0 rc
     for t in "${wanted[@]}"; do
-        if ! stage_tool "${t}"; then
+        if stage_tool "${t}"; then
+            :
+        else
+            rc=$?
             failed=$(( failed + 1 ))
-            record_manifest "${t}" "-" "-" "-" "MISSING"
+            record_manifest "${t}" "-" "-" "-" "SKIPPED"
+            # A proven hash mismatch is a security failure, not an optional-tool
+            # availability issue. Never continue after detecting one.
+            if (( rc == 2 )); then
+                warn "${t}: security verification failed; stopping tool staging"
+                exit 1
+            fi
         fi
     done
 
     if (( failed > 0 )); then
-        warn "${failed} tool(s) could not be staged"
-        [[ "${STRICT}" == "1" ]] && exit 1
+        warn "${failed} optional tool(s) were unavailable or could not be authenticated; continuing OS build without them"
     fi
     exit 0
 }
@@ -334,14 +350,12 @@ EOF
 }
 
 stage_modern_tools() {
-    retro_info "Staging modern Go/Rust tools (RustScan, ffuf, httpx, naabu)"
-    local strict_flag=()
-    [[ "${RETRO_TOOLS_STRICT}" == "1" ]] && strict_flag=(--strict)
-    "${RETRO_HELPER_DIR}/retro-fetch-tools" --all "${strict_flag[@]}" \
-        || retro_die "Modern tool staging failed in strict mode"
+    retro_info "Staging optional Go/Rust tools (RustScan, ffuf, httpx, naabu)"
+    if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" --all; then
+        retro_warn "One or more optional tools were skipped; continuing core OS assembly"
+    fi
     cat "${RETRO_ETC_DIR}/modern-tools.manifest" 2>/dev/null || true
 }
-
 # -----------------------------------------------------------------------------
 # 3. Retro AI daemon
 # -----------------------------------------------------------------------------
