@@ -456,6 +456,9 @@ mark FAILED_UNITS "${failed}"
 if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/RETRO_DETAIL: failed-unit /'; fi
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
+mark NETWORKMANAGER_ACTIVE "$(systemctl is-active NetworkManager 2>/dev/null || true)"
+mark BLUETOOTH_ACTIVE "$(systemctl is-active bluetooth 2>/dev/null || true)"
+mark HWPROFILE_ACTIVE "$(systemctl is-active retro-hwprofile 2>/dev/null || true)"
 retro_uid="$(id -u retro 2>/dev/null || true)"
 if [[ -n "${retro_uid}" ]]; then
     mark OPENBOX_RUNNING "$(yn pgrep -u "${retro_uid}" -x openbox)"
