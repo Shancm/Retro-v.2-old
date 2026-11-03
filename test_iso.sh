@@ -365,8 +365,8 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     local v
     v="${KV[LOGIN_LOOP_SUSPECT]:-n/a}"
     req_check "No login loop" "LOGIN_LOOP_SUSPECT=${v}" "0" "$([[ "${v}" == "0" ]] && echo 1 || echo 0)"
-    v="${KV[AUTOLOGIN_SESSION]:-n/a}"
-    req_check "Autologin desktop session" "AUTOLOGIN_SESSION=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[LIVE_SESSION_USER]:-n/a}"
+    req_check "Authenticated live desktop session" "LIVE_SESSION_USER=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
     v="${KV[PROC_openbox]:-n/a}"
     req_check "Window manager (openbox)" "PROC_openbox=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
     v="${KV[PROC_tint2]:-n/a}"
