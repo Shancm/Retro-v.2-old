@@ -106,6 +106,13 @@ install_github_cli() {
         || retro_die "Could not download the GitHub CLI repository keyring"
     gpg --show-keys "${tmp}" >/dev/null 2>&1 \
         || retro_die "Downloaded GitHub CLI keyring is not a valid OpenPGP keyring"
+    local fingerprints
+    fingerprints="$(gpg --show-keys --with-colons "${tmp}" \
+        | awk -F: '$1 == "fpr" { print toupper($10) }')"
+    if ! grep -Fxq '7F38BBB59D064DBCB3D84D725612B36462313325' <<< "${fingerprints}"; then
+        rm -f "${tmp}"
+        retro_die "GitHub CLI keyring is missing the official signing key fingerprint"
+    fi
     install -o root -g root -m 0644 "${tmp}" "${keyring}"
     rm -f "${tmp}"
     printf 'deb [arch=%s signed-by=%s] https://cli.github.com/packages stable main\n' \
