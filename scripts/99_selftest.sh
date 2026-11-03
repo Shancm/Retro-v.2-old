@@ -32,6 +32,35 @@ check() {
 has_line() { grep -Eq -- "$2" "$1" 2>/dev/null; }
 in_group() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
 
+lightdm_pam_clean() {
+    local f
+    # Debian's greeter/autologin PAM service files may legitimately use
+    # pam_permit.so. Only the primary interactive LightDM stack is forbidden
+    # from using it. The nopasswdlogin group bypass is forbidden everywhere.
+    if [[ -f /etc/pam.d/lightdm ]] && grep -Eq 'pam_permit[.]so' /etc/pam.d/lightdm; then
+        return 1
+    fi
+    for f in /etc/pam.d/lightdm*; do
+        [[ -f "${f}" ]] || continue
+        if grep -Eq 'nopasswdlogin' "${f}"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+gh_version() {
+    local version=""
+    if command -v dpkg-query >/dev/null 2>&1; then
+        version="$(dpkg-query -W -f='${Version}' gh 2>/dev/null || true)"
+    fi
+    if [[ -z "${version}" ]] && command -v gh >/dev/null 2>&1; then
+        version="$(gh --version 2>/dev/null | awk 'NR == 1 { for (i=1; i<=NF; i++) if ($i ~ /^[0-9]+([:.~+_-][A-Za-z0-9.+:~_-]+)*$/) { print $i; exit } }')"
+    fi
+    [[ -n "${version}" ]] || return 1
+    printf '%s\n' "${version}"
+}
+
 HOME_DIR="/home/${RETRO_USER}"
 
 # -----------------------------------------------------------------------------
@@ -83,10 +112,10 @@ test_login_stack() {
     retro_info "[2/7] LightDM / PAM / session files"
     local f
     check "no LightDM autologin PAM bypass" "remove /etc/pam.d/lightdm-autologin" test ! -e /etc/pam.d/lightdm-autologin
-    if grep -RqsE 'pam_permit[.]so|nopasswdlogin' /etc/pam.d/lightdm* 2>/dev/null; then
-        fail "LightDM has no permissive PAM bypass" "restore the package-provided LightDM PAM stack"
-    else
+    if lightdm_pam_clean; then
         pass "LightDM has no permissive PAM bypass"
+    else
+        fail "LightDM has no permissive PAM bypass" "remove pam_permit.so from /etc/pam.d/lightdm and nopasswdlogin from every /etc/pam.d/lightdm* file"
     fi
     for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf; do
         check "${f} exists" "02_interface_setup.sh install_login_stack" test -s "${f}"
@@ -236,8 +265,13 @@ test_boot_files() {
 # -----------------------------------------------------------------------------
 test_payload() {
     retro_info "[5/7] binaries / scripts / payload"
-    check "GitHub CLI version supports secure attestations" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages" \
-        bash -c 'v="$(gh version 2>/dev/null | cut -d" " -f3)" && dpkg --compare-versions "$v" ge 2.67.0'
+    local ghv=""
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0; then
+        pass "GitHub CLI version supports secure attestations (${ghv})"
+    else
+        ghv="${ghv:-not installed or version unreadable}"
+        fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
+    fi
     local b
     for b in openbox openbox-session tint2 pcmanfm picom xfce4-terminal jgmenu_run lightdm gh \
              nm-applet volumeicon nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
