@@ -451,15 +451,32 @@ mark FAILED_UNITS "${failed}"
 if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/RETRO_DETAIL: failed-unit /'; fi
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
-mark LABWC_RUNNING "$(yn pgrep -u retro -x labwc)"
-mark WAYBAR_RUNNING "$(yn pgrep -u retro -x waybar)"
+retro_uid="$(id -u retro 2>/dev/null || true)"
+if [[ -n "${retro_uid}" ]]; then
+    mark LABWC_RUNNING "$(yn pgrep -u "${retro_uid}" -x labwc)"
+    mark WAYBAR_RUNNING "$(yn pgrep -u "${retro_uid}" -x waybar)"
+    runtime_dir="/run/user/${retro_uid}"
+    wayland_socket=""
+    if [[ -d "${runtime_dir}" ]]; then
+        wayland_socket="$(find "${runtime_dir}" -maxdepth 1 -type s -name 'wayland-*' -print -quit 2>/dev/null || true)"
+    fi
+    if [[ -n "${wayland_socket}" ]]; then
+        mark WAYLAND_SOCKET yes
+    else
+        mark WAYLAND_SOCKET no
+    fi
+    for p in pcmanfm nm-applet volumeicon; do
+        mark "PROC_${p//-/_}" "$(yn pgrep -u "${retro_uid}" -x "${p}")"
+    done
+else
+    mark LABWC_RUNNING no
+    mark WAYBAR_RUNNING no
+    mark WAYLAND_SOCKET no
+    for p in pcmanfm nm-applet volumeicon; do mark "PROC_${p//-/_}" no; done
+fi
 mark FOOT_INSTALLED "$(yn command -v foot)"
 mark WOFI_INSTALLED "$(yn command -v wofi)"
-mark WAYLAND_SOCKET "$(yn test -S /run/user/1000/wayland-0)"
 mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
-for p in pcmanfm nm-applet volumeicon; do
-    mark "PROC_${p//-/_}" "$(yn pgrep -u retro -x "${p}")"
-done
 
 loop=0
 for f in /var/log/lightdm/lightdm.log; do
