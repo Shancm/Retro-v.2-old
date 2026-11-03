@@ -147,7 +147,7 @@ fi
 
 # 2. No auto-login on installed systems
 step "restoring greeter-based login"
-rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
+rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/lightdm/lightdm.conf.d/60-retro-installed.conf
 cat > /etc/lightdm/lightdm.conf <<'EOT'
 [LightDM]
 minimum-vt=7
@@ -162,6 +162,7 @@ EOT
 systemctl disable retro-live-fixup.service retro-live-credentials.service retro-boot-report.service >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/retro-live-fixup.service /etc/systemd/system/retro-live-credentials.service
 rm -f /opt/retro-os/bin/retro-live-fixup /opt/retro-os/bin/retro-live-credentials
+systemctl daemon-reload >/dev/null 2>&1 || true
 step "purging live-boot / live-config / installer"
 DEBIAN_FRONTEND=noninteractive apt-get purge -y live-boot live-boot-initramfs-tools \
     live-config live-config-systemd calamares calamares-settings-debian >/dev/null 2>&1 || true
