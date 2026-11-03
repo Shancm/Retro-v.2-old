@@ -414,7 +414,7 @@ preflight() {
 overlay_hash() {
     [[ -d "${OVERLAY_DIR}" ]] || retro_die "overlay directory missing: ${OVERLAY_DIR}"
     {
-        ( cd "${OVERLAY_DIR}" && find . -printf '%P\0%y\0%m\0%l\0' | LC_ALL=C sort -z )
+        ( cd "${OVERLAY_DIR}" && find . -printf '%P\t%y\t%m\t%l\0' | LC_ALL=C sort -z )
         ( cd "${OVERLAY_DIR}" && find . -type f -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
             printf '%s\0' "${f}"
             sha256sum -- "${f}" | awk '{print $1}'
@@ -812,7 +812,7 @@ build_iso() {
     mkdir -p "${OUT_DIR}"
     local final_iso="${OUT_DIR}/${ISO_FILENAME}"
     local partial="${final_iso}.partial"
-    rm -f "${partial}" "${final_iso}.sha256"
+    rm -f "${partial}" "${final_iso}" "${final_iso}.sha256"
     retro_info "Packing hybrid ISO with xorriso -> ${partial}"
 
     xorriso -as mkisofs \
