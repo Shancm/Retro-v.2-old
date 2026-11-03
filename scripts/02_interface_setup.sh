@@ -47,7 +47,7 @@ install_graphical_stack() {
 
 install_branding_assets() {
     retro_info "Installing Retro OS X11 branding and Openbox session"
-    mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/xsessions /usr/share/applications
+    mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/xsessions /usr/share/applications /usr/share/retro-os
     retro_write /usr/share/pixmaps/retro-start.svg 0644 <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs><radialGradient id="g" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7dffd0"/><stop offset=".55" stop-color="#00ff9c"/><stop offset="1" stop-color="#007a4c"/></radialGradient></defs>
@@ -56,7 +56,7 @@ install_branding_assets() {
   <path d="M23 43V21h10a7 7 0 0 1 0 14h-4l8 8" fill="none" stroke="#0c0d12" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 EOF
-    retro_write /usr/share/applications/retro-start.desktop 0644 <<'EOF'
+    retro_write /usr/share/retro-os/retro-start.desktop 0644 <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Retro OS Start
@@ -454,7 +454,7 @@ launcher_icon_size = 24
 launcher_icon_theme = Papirus-Dark
 launcher_icon_theme_override = 1
 launcher_tooltip = 1
-launcher_item_app = /usr/share/applications/retro-start.desktop
+launcher_item_app = /usr/share/retro-os/retro-start.desktop
 
 # Taskbar
 taskbar_mode = single_desktop
