@@ -474,7 +474,6 @@ write_skel_session() {
 <?xml version="1.0"?>
 <labwc_config>
   <theme>
-    <name>Arc-Dark</name>
     <cornerRadius>3</cornerRadius>
     <font name="JetBrains Mono" size="10"/>
   </theme>
@@ -494,6 +493,25 @@ write_skel_session() {
 </labwc_config>
 EOF
 
+    retro_write "${SKEL}/.config/labwc/themerc-override" 0644 <<'EOF'
+border.width: 2
+window.active.border.color: #00ff9c
+window.inactive.border.color: #3a3f52
+window.active.title.bg.color: #0c0d12
+window.inactive.title.bg.color: #1b1d27
+window.active.label.text.color: #00ff9c
+window.inactive.label.text.color: #e0e0e0
+window.active.button.unpressed.image.color: #00ff9c
+window.inactive.button.unpressed.image.color: #8c93a8
+menu.border.width: 1
+menu.border.color: #00ff9c
+menu.items.bg.color: #0c0d12
+menu.items.text.color: #e0e0e0
+menu.items.active.bg.color: #00ff9c
+menu.items.active.text.color: #0c0d12
+menu.title.bg.color: #1b1d27
+menu.title.text.color: #00ff9c
+EOF
     retro_write "${SKEL}/.config/labwc/environment" 0644 <<'EOF'
 XKB_DEFAULT_LAYOUT=us
 XCURSOR_THEME=Adwaita
