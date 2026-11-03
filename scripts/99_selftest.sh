@@ -110,11 +110,11 @@ test_user() {
 }
 
 # -----------------------------------------------------------------------------
-# 2. Login stack (LightDM + PAM + session entry points)
+# 2. Login stack (LightDM + PAM + Wayland session entry points)
 # -----------------------------------------------------------------------------
 test_login_stack() {
-    retro_info "[2/7] LightDM / PAM / session files"
-    local f
+    retro_info "[2/7] LightDM / PAM / Labwc Wayland session"
+    local f base
     check "package-provided LightDM autologin PAM service is intact" "restore the lightdm package PAM files; do not delete /etc/pam.d/lightdm-autologin" bash -c 'dpkg-query -S /etc/pam.d/lightdm-autologin >/dev/null 2>&1 && test -s /etc/pam.d/lightdm-autologin'
     if lightdm_pam_clean; then
         pass "LightDM has no permissive PAM bypass"
@@ -128,8 +128,12 @@ test_login_stack() {
         else
             pass "${f} has no autologin directives"
         fi
-        check "${f} selects Openbox" "set user-session=openbox" grep -q '^user-session=openbox$' "${f}"
+        check "${f} selects Retro OS Wayland session" "set user-session=retro-os" grep -q '^user-session=retro-os$' "${f}"
     done
+    check "Retro OS Wayland session descriptor exists" "02_interface_setup.sh install_branding_assets" test -s /usr/share/wayland-sessions/retro-os.desktop
+    check "Wayland session wrapper exists and is executable" "install /usr/local/bin/retro-labwc-session" test -x /usr/local/bin/retro-labwc-session
+    check "Wayland session wrapper has valid shell syntax" "fix retro-labwc-session" sh -n /usr/local/bin/retro-labwc-session
+    check "Wayland session wrapper starts Labwc" "Exec must end in /usr/bin/labwc" grep -q '^exec /usr/bin/labwc$' /usr/local/bin/retro-labwc-session
     check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
@@ -139,18 +143,11 @@ test_login_stack() {
         test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
              "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/usr/lib/systemd/system/graphical.target"
     check "display-manager.service -> lightdm" "systemctl enable lightdm.service" bash -c 'readlink /etc/systemd/system/display-manager.service | grep -q lightdm'
-    check "/usr/share/xsessions/openbox.desktop" "install the openbox package" test -s /usr/share/xsessions/openbox.desktop
     check "Xwrapper.config" "restore /opt/retro-os/templates/Xwrapper.config" test -s /etc/X11/Xwrapper.config
 
-    local base sess
     for base in /etc/skel "${HOME_DIR}"; do
-        for sess in .xsession .xinitrc; do
-            if has_line "${base}/${sess}" '^exec openbox-session$' && [[ -x "${base}/${sess}" ]]; then
-                pass "${base}/${sess} (exec openbox-session, executable)"
-            else
-                fail "${base}/${sess} (exec openbox-session, executable)" "re-run 02_interface_setup.sh write_skel_session"
-            fi
-        done
+        check "${base}/.config/labwc/autostart exists" "re-run 02_interface_setup.sh write_skel_session" test -x "${base}/.config/labwc/autostart"
+        check "${base}/.config/labwc/environment exists" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/.config/labwc/environment"
     done
 
     local unit
@@ -160,44 +157,43 @@ test_login_stack() {
 }
 
 # -----------------------------------------------------------------------------
-# 3. Home / skeleton ownership and configs
+# 3. Home / skeleton ownership and Wayland desktop configs
 # -----------------------------------------------------------------------------
 test_home() {
-    retro_info "[3/7] home + skeleton"
+    retro_info "[3/7] home + Wayland desktop skeleton"
     check "${HOME_DIR} exists" "98_finalize.sh sync_home_from_skel" test -d "${HOME_DIR}"
     if [[ -z "$(find "${HOME_DIR}" \( ! -user "${RETRO_USER}" -o ! -group "${RETRO_USER}" \) -print -quit 2>/dev/null)" ]]; then
         pass "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}"
     else
-        fail "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}" "chown -R ${RETRO_USER}:${RETRO_USER} ${HOME_DIR} (overlay/cp -a may have preserved host UIDs)"
+        fail "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}" "chown -R ${RETRO_USER}:${RETRO_USER} ${HOME_DIR}"
     fi
     if [[ -z "$(find /etc/skel ! -type l -perm /022 -print -quit 2>/dev/null)" ]]; then
         pass "/etc/skel has no group/other-writable entries"
     else
-        fail "/etc/skel has no group/other-writable entries" "chmod -R go-w /etc/skel (offender: $(find /etc/skel ! -type l -perm /022 -print -quit))"
+        fail "/etc/skel has no group/other-writable entries" "chmod -R go-w /etc/skel"
     fi
-    if [[ "$(stat -c %U /etc/skel)" == "root" ]]; then
-        pass "/etc/skel owned by root (copied to the user with correct ownership)"
-    else
-        fail "/etc/skel owned by root" "chown -R root:root /etc/skel"
-    fi
+    check "/etc/skel owned by root" "chown -R root:root /etc/skel" test "$(stat -c %U /etc/skel)" = root
 
     local base f
     for base in /etc/skel "${HOME_DIR}"; do
-        for f in .config/openbox/rc.xml .config/openbox/menu.xml .config/openbox/autostart \
-                 .config/tint2/tint2rc .config/jgmenu/jgmenurc .config/picom/picom.conf \
-                 .config/pcmanfm/default/desktop-items-0.conf; do
-            check "${base}/${f}" "re-run 02_interface_setup.sh (skeleton step)" test -s "${base}/${f}"
+        for f in .config/labwc/rc.xml .config/labwc/menu.xml .config/labwc/autostart \
+                 .config/labwc/environment .config/waybar/config .config/waybar/style.css \
+                 .config/foot/foot.ini .config/wofi/style.css; do
+            check "${base}/${f}" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/${f}"
         done
-        for f in .config/openbox/rc.xml .config/openbox/menu.xml; do
-            check "${base}/${f} is valid XML" "xmllint/ElementTree rejected the file - inspect the generator" \
+        for f in .config/labwc/rc.xml .config/labwc/menu.xml; do
+            check "${base}/${f} is valid XML" "inspect Labwc configuration XML" \
                 python3 -c "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])" "${base}/${f}"
         done
-        local dc="${base}/.config/pcmanfm/default/desktop-items-0.conf"
-        if has_line "${dc}" '^show_wm_menu=1$' && has_line "${dc}" '^wallpaper_mode=stretch$'; then
-            pass "${dc}: show_wm_menu=1 + wallpaper_mode=stretch"
+        check "${base}/.config/waybar/config is valid JSON" "fix Waybar JSON config" \
+            python3 -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "${base}/.config/waybar/config"
+        if grep -q 'foot --hold -e bash -lc' "${base}/.config/labwc/menu.xml"; then
+            pass "${base}/Labwc CLI menu entries open in persistent Foot terminals"
         else
-            fail "${dc}: show_wm_menu=1 + wallpaper_mode=stretch" "fix write_skel_jgmenu_picom_pcmanfm in 02_interface_setup.sh"
+            fail "${base}/Labwc CLI menu entries open in persistent Foot terminals" "retro-menu-gen --system/--user"
         fi
+        check "${base}/Waybar launcher opens Wofi" "set custom/launcher on-click=wofi --show drun" \
+            grep -q 'wofi --show drun' "${base}/.config/waybar/config"
     done
 
     local wp="/usr/share/backgrounds/retro-os/wallpaper.png"
@@ -205,20 +201,6 @@ test_home() {
         pass "wallpaper present and a valid PNG (${wp})"
     else
         fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
-    fi
-    check "start orb icon" "overlay/usr/share/pixmaps/retro-start.svg or 02 built-in" test -s /usr/share/pixmaps/retro-start.svg
-
-    # Security tool launchers must run through the --hold terminal wrapper
-    local bad=0 d
-    for d in /usr/share/applications/retro-tool-*.desktop; do
-        [[ -e "${d}" ]] || continue
-        has_line "${d}" '^Exec=xfce4-terminal --hold -e ' || { bad=1; printf '          bad launcher: %s\n' "${d}" >&2; }
-    done
-    if (( bad == 0 )); then pass "tool .desktop launchers use xfce4-terminal --hold -e"; else fail "tool .desktop launchers use xfce4-terminal --hold -e" "retro-menu-gen --system"; fi
-    if has_line "${HOME_DIR}/.config/openbox/menu.xml" "xfce4-terminal.*(exec bash|-x bash|--hold)"; then
-        pass "Openbox menu tool entries use interactive terminal wrapper"
-    else
-        fail "Openbox menu tool entries use interactive terminal wrapper" "retro-menu-gen --user ${HOME_DIR} (are the tools installed?)"
     fi
 }
 
@@ -277,8 +259,8 @@ test_payload() {
         fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
     fi
     local b
-    for b in openbox openbox-session tint2 pcmanfm picom xfce4-terminal jgmenu_run lightdm gh \
-             nm-applet volumeicon nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
+    for b in labwc waybar foot wofi swaybg mako lightdm gh xwayland pcmanfm nm-applet volumeicon \
+             grim slurp wl-copy nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
     done
