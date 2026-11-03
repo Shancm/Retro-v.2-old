@@ -451,6 +451,10 @@ update_scripts() {
         warn "RETRO_UPDATE_REPO is empty - refusing update without an explicit publisher identity"
         rm -rf "${tmp}"; return 1
     fi
+    if ! command -v gh >/dev/null 2>&1; then
+        warn "GitHub CLI is unavailable - refusing update without publisher attestation verification"
+        rm -rf "${tmp}"; return 1
+    fi
     local gh_version
     gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
     if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
