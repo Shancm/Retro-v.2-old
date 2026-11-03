@@ -242,8 +242,8 @@ stage_tool() {
     fi
 
     status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}")"
-    if [[ "${status}" == "MISMATCH" ]]; then
-        warn "${name}: SHA-256 MISMATCH - refusing to install"
+    if [[ "${status}" != "verified" ]]; then
+        warn "${name}: checksum is ${status}; refusing to install an unauthenticated release asset"
         rm -rf "${work}"; return 1
     fi
 
