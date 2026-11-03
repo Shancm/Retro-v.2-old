@@ -402,10 +402,10 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
 
     printf '\n%s  Supporting checks (advisory)%s\n' "${T_D}" "${T_0}"
     adv_check "Wallpaper installed"   "WALLPAPER=${KV[WALLPAPER]:-n/a}"           "yes"    "$([[ "${KV[WALLPAPER]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "EarlyOOM active"       "EARLYOOM_ACTIVE=${KV[EARLYOOM_ACTIVE]:-n/a}" "active" "$([[ "${KV[EARLYOOM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
+    req_check "EarlyOOM active"       "EARLYOOM_ACTIVE=${KV[EARLYOOM_ACTIVE]:-n/a}" "active" "$([[ "${KV[EARLYOOM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
     if [[ "${tier}" == "low" ]]; then
-        adv_check "EarlyOOM thresholds"  "${KV[EARLYOOM_ARGS]:-n/a}" "-m 4 -s 8" "$([[ "${KV[EARLYOOM_ARGS]:-}" == "-m 4 -s 8"* ]] && echo 1 || echo 0)"
-        adv_check "vm.swappiness"        "SWAPPINESS=${KV[SWAPPINESS]:-n/a}" "100" "$([[ "${KV[SWAPPINESS]:-}" == "100" ]] && echo 1 || echo 0)"
+        req_check "EarlyOOM thresholds"  "${KV[EARLYOOM_ARGS]:-n/a}" "-m 4 -s 8" "$([[ "${KV[EARLYOOM_ARGS]:-}" == "-m 4 -s 8"* ]] && echo 1 || echo 0)"
+        req_check "vm.swappiness"        "SWAPPINESS=${KV[SWAPPINESS]:-n/a}" "100" "$([[ "${KV[SWAPPINESS]:-}" == "100" ]] && echo 1 || echo 0)"
     fi
     adv_check "TCP congestion = bbr"  "BBR=${KV[BBR]:-n/a}"                      "bbr"    "$([[ "${KV[BBR]:-}" == "bbr" ]] && echo 1 || echo 0)"
     adv_check "systemd state"         "SYSTEM_STATE=${KV[SYSTEM_STATE]:-n/a}"    "running" "$([[ "${KV[SYSTEM_STATE]:-}" == "running" ]] && echo 1 || echo 0)"
