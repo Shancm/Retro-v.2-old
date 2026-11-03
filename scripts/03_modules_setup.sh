@@ -250,12 +250,12 @@ stage_tool() {
         fi
     fi
 
-    if [[ -z "\${asset_url}" ]]; then
-        asset_name="\${PIN_ASSET//@V@/\${PIN}}"
-        tag="\${TAG_PREFIX}\${PIN}"
-        asset_url="https://github.com/\${REPO}/releases/download/\${tag}/\${asset_name}"
+    if [[ -z "${asset_url}" ]]; then
+        asset_name="${PIN_ASSET//@V@/${PIN}}"
+        tag="${TAG_PREFIX}${PIN}"
+        asset_url="https://github.com/${REPO}/releases/download/${tag}/${asset_name}"
         used="pinned-direct"
-        warn "\${name}: falling back to direct pinned URL"
+        warn "${name}: falling back to direct pinned URL"
         # Load the pinned release's own asset/checksum listing.
         if gh_release_json "${REPO}" "${tag}" "${json}" 2>/dev/null; then
             parse_release "${json}" > "${listing}" || true
