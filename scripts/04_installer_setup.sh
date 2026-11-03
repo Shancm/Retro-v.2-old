@@ -144,7 +144,7 @@ fi
 
 # 2. No auto-login on installed systems
 step "restoring greeter-based login"
-rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/lightdm/lightdm.conf.d/60-retro-installed.conf
+rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf /etc/lightdm/lightdm.conf.d/60-retro-installed.conf
 cat > /etc/lightdm/lightdm.conf <<'EOT'
 [LightDM]
 minimum-vt=7
