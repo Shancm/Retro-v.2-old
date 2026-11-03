@@ -496,7 +496,7 @@ build_openbox_menu() {
     printf '  </menu>\n'
 
     printf '  <separator/>\n'
-    have calamares && ob_item "Install Retro OS" "sudo -E calamares"
+    have calamares && ob_item "Install Retro OS" "pkexec calamares"
     ob_item "Lock Screen" "dm-tool lock"
     printf '  <menu id="retro-exit" label="Exit">\n'
     printf '  <item label="Log Out">\n    <action name="Exit"/>\n  </item>\n'
@@ -522,7 +522,7 @@ build_jgmenu_csv() {
         echo "Retro System,^checkout(retro-sys),preferences-system"
         echo "Settings,^checkout(retro-set),preferences-desktop"
         echo "^sep()"
-        have calamares && echo "Install Retro OS,sudo -E calamares,system-software-install"
+        have calamares && echo "Install Retro OS,pkexec calamares,system-software-install"
         echo "Exit,^checkout(retro-exit),system-shutdown"
         echo
         if (( ${#CAT_ORDER[@]} > 0 )); then
