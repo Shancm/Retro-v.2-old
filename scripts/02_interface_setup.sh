@@ -183,8 +183,8 @@ sync_file /opt/retro-os/templates/Xwrapper.config /etc/X11/Xwrapper.config 0644
 
 home="/home/${USER_NAME}"
 if [[ -d "${home}" ]]; then
-    chown -R "${USER_NAME}:${USER_NAME}" "${home}"
     [[ -d "${home}/.config/openbox" ]] || cp -a /etc/skel/.config/openbox "${home}/.config/"
+    chown -R "${USER_NAME}:${USER_NAME}" "${home}"
 fi
 
 chmod 1777 /tmp /var/tmp 2>/dev/null || true
