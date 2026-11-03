@@ -34,12 +34,13 @@ in_group() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
 
 lightdm_pam_clean() {
     local f pam_dir="${RETRO_SELFTEST_PAM_DIR:-/etc/pam.d}"
-    # Debian's greeter/autologin PAM service files may legitimately use
-    # pam_permit.so. Only the primary interactive LightDM stack is forbidden
-    # from using it. The nopasswdlogin group bypass is forbidden everywhere.
-    if [[ -f "${pam_dir}/lightdm" ]] && grep -Eq 'pam_permit[.]so' "${pam_dir}/lightdm"; then
-        return 1
-    fi
+    # Keep Debian's package-provided PAM service files intact. In particular,
+    # lightdm-greeter/lightdm-autologin may legitimately use pam_permit.so;
+    # its presence is not itself an enabled autologin policy.
+    # The bypass prohibited here is the nopasswdlogin group rule.
+    [[ -s "${pam_dir}/lightdm" ]] || return 1
+    [[ -s "${pam_dir}/lightdm-autologin" ]] || return 1
+    grep -Eq 'common-auth' "${pam_dir}/lightdm" || return 1
     for f in "${pam_dir}"/lightdm*; do
         [[ -f "${f}" ]] || continue
         if grep -Eq 'nopasswdlogin' "${f}"; then
@@ -51,13 +52,14 @@ lightdm_pam_clean() {
 
 gh_version() {
     local version=""
-    if command -v dpkg-query >/dev/null 2>&1; then
+    # Prefer the executable's own version over package metadata.
+    if command -v gh >/dev/null 2>&1; then
+        version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    fi
+    if [[ -z "${version}" ]] && command -v dpkg-query >/dev/null 2>&1; then
         version="$(dpkg-query -W -f='${Version}' gh 2>/dev/null || true)"
     fi
-    if [[ -z "${version}" ]] && command -v gh >/dev/null 2>&1; then
-        version="$(gh --version 2>/dev/null | awk 'NR == 1 { for (i=1; i<=NF; i++) if ($i ~ /^[0-9]+([:.~+_-][A-Za-z0-9.+:~_-]+)*$/) { print $i; exit } }')"
-    fi
-    [[ -n "${version}" ]] || return 1
+    [[ "${version}" =~ ^[0-9]+([:.~+_-][A-Za-z0-9.+:~_-]+)*$ ]] || return 1
     printf '%s\n' "${version}"
 }
 
@@ -111,11 +113,11 @@ test_user() {
 test_login_stack() {
     retro_info "[2/7] LightDM / PAM / session files"
     local f
-    check "no LightDM autologin PAM bypass" "remove /etc/pam.d/lightdm-autologin" test ! -e /etc/pam.d/lightdm-autologin
+    check "package-provided LightDM autologin PAM service is intact" "restore the lightdm package PAM files; do not delete /etc/pam.d/lightdm-autologin" bash -c 'dpkg-query -S /etc/pam.d/lightdm-autologin >/dev/null 2>&1 && test -s /etc/pam.d/lightdm-autologin'
     if lightdm_pam_clean; then
         pass "LightDM has no permissive PAM bypass"
     else
-        fail "LightDM has no permissive PAM bypass" "remove pam_permit.so from /etc/pam.d/lightdm and nopasswdlogin from every /etc/pam.d/lightdm* file"
+        fail "LightDM has no permissive PAM bypass" "restore package-provided /etc/pam.d/lightdm* files and remove any nopasswdlogin rules; pam_permit.so in Debian greeter/autologin stacks is expected"
     fi
     for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf; do
         check "${f} exists" "02_interface_setup.sh install_login_stack" test -s "${f}"
@@ -266,7 +268,7 @@ test_boot_files() {
 test_payload() {
     retro_info "[5/7] binaries / scripts / payload"
     local ghv=""
-    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0; then
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0 && gh attestation verify --help >/dev/null 2>&1; then
         pass "GitHub CLI version supports secure attestations (${ghv})"
     else
         ghv="${ghv:-not installed or version unreadable}"
