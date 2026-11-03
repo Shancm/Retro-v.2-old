@@ -13,8 +13,8 @@
 #   --usb             attach the ISO as a USB disk (tests the isohybrid MBR/GPT)
 #
 # What it proves: the bootloader chain (ISOLINUX or standalone GRUB-EFI) starts
-# the kernel, live-boot mounts the squashfs, LightDM auto-logs in (no login
-# loop), Openbox + Tint2 run, the correct tier/ZRAM were chosen, and the screen
+# the kernel, live-boot mounts the squashfs, LightDM presents its authenticated
+# greeter without a login loop, the correct tier/ZRAM were chosen, and the screen
 # is not black (framebuffer screenshot analysis).
 # =============================================================================
 set -Eeuo pipefail
@@ -365,12 +365,12 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     local v
     v="${KV[LOGIN_LOOP_SUSPECT]:-n/a}"
     req_check "No login loop" "LOGIN_LOOP_SUSPECT=${v}" "0" "$([[ "${v}" == "0" ]] && echo 1 || echo 0)"
-    v="${KV[AUTOLOGIN_SESSION]:-n/a}"
-    req_check "Autologin desktop session" "AUTOLOGIN_SESSION=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
-    v="${KV[PROC_openbox]:-n/a}"
-    req_check "Window manager (openbox)" "PROC_openbox=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
-    v="${KV[PROC_tint2]:-n/a}"
-    req_check "Panel (tint2)" "PROC_tint2=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[LIGHTDM_ACTIVE]:-n/a}"
+    req_check "LightDM active" "LIGHTDM_ACTIVE=${v}" "active" "$([[ "${v}" == "active" ]] && echo 1 || echo 0)"
+    v="${KV[LIGHTDM_GREETER]:-n/a}"
+    req_check "Authenticated LightDM greeter" "LIGHTDM_GREETER=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[XORG_RUNNING]:-n/a}"
+    req_check "Xorg running" "XORG_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
     v="${KV[TIER]:-n/a}"
     req_check "Adaptive tier (${KV[RAM_MB]:-?} MiB seen)" "TIER=${v}" "${tier}" "$([[ "${v}" == "${tier}" ]] && echo 1 || echo 0)"
     v="${KV[ZRAM]:-n/a}"

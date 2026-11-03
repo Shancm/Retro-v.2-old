@@ -43,26 +43,37 @@ test_user() {
     if [[ "$(id -u "${RETRO_USER}" 2>/dev/null || echo -1)" == "${RETRO_USER_UID}" ]]; then
         pass "user ${RETRO_USER} has UID ${RETRO_USER_UID}"
     else
-        fail "user ${RETRO_USER} has UID ${RETRO_USER_UID}" "UID 1000 was taken before 'useradd'; check debootstrap/packages creating users"
+        fail "user ${RETRO_USER} has UID ${RETRO_USER_UID}" "check UID allocation in 01_engine_setup.sh"
     fi
 
     local g
-    for g in autologin nopasswdlogin sudo audio video plugdev netdev wireshark; do
-        if in_group "${RETRO_USER}" "${g}"; then
-            pass "${RETRO_USER} in group ${g}"
-        else
-            fail "${RETRO_USER} in group ${g}" "usermod -aG ${g} ${RETRO_USER} (RETRO_USER_GROUPS in config.env)"
+    for g in sudo audio video plugdev netdev wireshark; do
+        if in_group "${RETRO_USER}" "${g}"; then pass "${RETRO_USER} in group ${g}"
+        else fail "${RETRO_USER} in group ${g}" "usermod -aG ${g} ${RETRO_USER}"
+        fi
+    done
+    for g in autologin nopasswdlogin; do
+        if in_group "${RETRO_USER}" "${g}"; then fail "${RETRO_USER} is not in insecure group ${g}" "remove ${g} from RETRO_USER_GROUPS"
+        else pass "${RETRO_USER} not in ${g}"
         fi
     done
 
-    local hash
-    hash="$(awk -F: -v u="${RETRO_USER}" '$1==u {print $2}' /etc/shadow)"
-    if [[ -n "${hash}" && "${hash}" != '!'* && "${hash}" != '*'* ]]; then
-        pass "/etc/shadow entry for ${RETRO_USER} is unlocked"
-    else
-        fail "/etc/shadow entry for ${RETRO_USER} is unlocked" "run: usermod -U ${RETRO_USER}; echo '${RETRO_USER}:<pass>' | chpasswd"
+    local status root_status
+    status="$(passwd -S "${RETRO_USER}" 2>/dev/null | awk '{print $2}')"
+    root_status="$(passwd -S root 2>/dev/null | awk '{print $2}')"
+    if [[ "${status}" == "L" || "${status}" == "LK" ]]; then pass "image default user password is locked"
+    else fail "image default user password is locked" "keep the build-time account locked; use live-only random credentials"
     fi
-    check "sudoers drop-in valid" "visudo -cf /etc/sudoers.d/90-retro-nopasswd" visudo -cf /etc/sudoers.d/90-retro-nopasswd
+    if [[ "${root_status}" == "L" || "${root_status}" == "LK" ]]; then pass "root account is locked"
+    else fail "root account is locked" "passwd --lock root in 01_engine_setup.sh"
+    fi
+    check "no passwordless sudo drop-in" "remove /etc/sudoers.d/90-retro-nopasswd" test ! -e /etc/sudoers.d/90-retro-nopasswd
+    if grep -RqsE 'NOPASSWD:[[:space:]]*ALL' /etc/sudoers /etc/sudoers.d 2>/dev/null; then
+        fail "no NOPASSWD: ALL sudo rule" "remove every passwordless full-sudo rule"
+    else
+        pass "no NOPASSWD: ALL sudo rule"
+    fi
+    check "sudoers syntax valid" "visudo -c" visudo -c
 }
 
 # -----------------------------------------------------------------------------
@@ -70,52 +81,47 @@ test_user() {
 # -----------------------------------------------------------------------------
 test_login_stack() {
     retro_info "[2/7] LightDM / PAM / session files"
-    local pam="/etc/pam.d/lightdm-autologin"
-    check "${pam} exists" "02_interface_setup.sh install_login_stack" test -s "${pam}"
-    if has_line "${pam}" 'pam_succeed_if\.so[[:space:]]+user[[:space:]]+ingroup[[:space:]]+nopasswdlogin'; then
-        pass "PAM: pam_succeed_if ingroup nopasswdlogin"
-    else
-        fail "PAM: pam_succeed_if ingroup nopasswdlogin" "restore /opt/retro-os/templates/lightdm-autologin.pam to ${pam}"
-    fi
-    if has_line "${pam}" '^auth[[:space:]]+required[[:space:]]+pam_permit\.so'; then
-        pass "PAM: pam_permit.so"
-    else
-        fail "PAM: pam_permit.so" "restore /opt/retro-os/templates/lightdm-autologin.pam to ${pam}"
-    fi
-
     local f
-    for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf; do
-        if has_line "${f}" "^autologin-user=${RETRO_USER}\$" \
-           && has_line "${f}" '^autologin-user-timeout=0$' \
-           && has_line "${f}" '^user-session=openbox$'; then
-            pass "$(basename "${f}") autologin parameters"
+    check "no LightDM autologin PAM bypass" "remove /etc/pam.d/lightdm-autologin" test ! -e /etc/pam.d/lightdm-autologin
+    if grep -RqsE 'pam_permit[.]so|nopasswdlogin' /etc/pam.d/lightdm* 2>/dev/null; then
+        fail "LightDM has no permissive PAM bypass" "restore the package-provided LightDM PAM stack"
+    else
+        pass "LightDM has no permissive PAM bypass"
+    fi
+    for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf; do
+        check "${f} exists" "02_interface_setup.sh install_login_stack" test -s "${f}"
+        if grep -Eq '^autologin-(user|user-timeout|session)=' "${f}"; then
+            fail "${f} has no autologin directives" "remove all LightDM autologin settings"
         else
-            fail "$(basename "${f}") autologin parameters" "must contain autologin-user=${RETRO_USER}, autologin-user-timeout=0, user-session=openbox"
+            pass "${f} has no autologin directives"
         fi
+        check "${f} selects Openbox" "set user-session=openbox" grep -q '^user-session=openbox$' "${f}"
     done
-
+    check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
+    check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
+    check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q '^ConditionKernelCommandLine=boot=live$' /etc/systemd/system/retro-live-credentials.service
+    check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" bash -c '! grep -Eq "chpasswd|:retro|--unlock" "${RETRO_HELPER_DIR}/retro-live-fixup"'
     check "default target = graphical" "systemctl set-default graphical.target" \
         test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
              "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/usr/lib/systemd/system/graphical.target"
-    check "display-manager.service -> lightdm" "systemctl enable lightdm.service" \
-        bash -c 'readlink /etc/systemd/system/display-manager.service | grep -q lightdm'
+    check "display-manager.service -> lightdm" "systemctl enable lightdm.service" bash -c 'readlink /etc/systemd/system/display-manager.service | grep -q lightdm'
     check "/usr/share/xsessions/openbox.desktop" "install the openbox package" test -s /usr/share/xsessions/openbox.desktop
     check "Xwrapper.config" "restore /opt/retro-os/templates/Xwrapper.config" test -s /etc/X11/Xwrapper.config
 
-    local base
+    local base sess
     for base in /etc/skel "${HOME_DIR}"; do
-        local s
-        for s in .xsession .xinitrc; do
-            if has_line "${base}/${s}" '^exec openbox-session$' && [[ -x "${base}/${s}" ]]; then
-                pass "${base}/${s} (exec openbox-session, executable)"
+        for sess in .xsession .xinitrc; do
+            if has_line "${base}/${sess}" '^exec openbox-session$' && [[ -x "${base}/${sess}" ]]; then
+                pass "${base}/${sess} (exec openbox-session, executable)"
             else
-                fail "${base}/${s} (exec openbox-session, executable)" "re-run 02_interface_setup.sh write_skel_session, then 98_finalize.sh"
+                fail "${base}/${sess} (exec openbox-session, executable)" "re-run 02_interface_setup.sh write_skel_session"
             fi
         done
     done
 
     local unit
-    for unit in lightdm retro-live-fixup retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
+    for unit in lightdm retro-live-fixup retro-live-credentials retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
         check "unit enabled: ${unit}" "systemctl enable ${unit}.service" systemctl is-enabled --quiet "${unit}.service"
     done
 }
@@ -230,8 +236,10 @@ test_boot_files() {
 # -----------------------------------------------------------------------------
 test_payload() {
     retro_info "[5/7] binaries / scripts / payload"
+    check "GitHub CLI version supports secure attestations" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages" \
+        bash -c 'v="$(gh version 2>/dev/null | cut -d" " -f3)" && dpkg --compare-versions "$v" ge 2.67.0'
     local b
-    for b in openbox openbox-session tint2 pcmanfm picom xfce4-terminal jgmenu_run lightdm \
+    for b in openbox openbox-session tint2 pcmanfm picom xfce4-terminal jgmenu_run lightdm gh \
              nm-applet volumeicon nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
              qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
@@ -240,7 +248,7 @@ test_payload() {
         if command -v "${b}" >/dev/null 2>&1; then
             pass "modern tool: ${b}"
         elif [[ "${RETRO_TOOLS_STRICT}" == "1" ]]; then
-            fail "modern tool: ${b}" "retro-fetch-tools ${b} (or set GITHUB_TOKEN to avoid API rate limits)"
+            fail "modern tool: ${b}" "retro-fetch-tools ${b}; each release needs valid GitHub attestation and SHA-256"
         else
             soft "modern tool missing: ${b}" "run on the live system: sudo ${RETRO_HELPER_DIR}/retro-fetch-tools ${b}"
         fi

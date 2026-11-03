@@ -60,7 +60,7 @@ Usage: sudo ./build.sh [options]
 
 Environment passthrough into the chroot (optional):
   GITHUB_TOKEN RETRO_INSTALL_FIRMWARE RETRO_INSTALL_BROWSER RETRO_INSTALL_CALAMARES
-  RETRO_SLIM_DPKG RETRO_TOOLS_CHANNEL RETRO_TOOLS_STRICT RETRO_UPDATE_URL
+  RETRO_SLIM_DPKG RETRO_TOOLS_CHANNEL RETRO_TOOLS_STRICT RETRO_UPDATE_URL RETRO_UPDATE_REPO
   RETRO_LOW_TIER_MAX_MB DEBIAN_MIRROR DEBIAN_SECURITY_MIRROR
 Host-only: BUILD_ROOT  SQUASHFS_ZSTD_LEVEL
 EOF
@@ -462,7 +462,7 @@ build_chroot_env() {
     )
     local v
     for v in GITHUB_TOKEN RETRO_INSTALL_FIRMWARE RETRO_INSTALL_BROWSER RETRO_INSTALL_CALAMARES \
-             RETRO_SLIM_DPKG RETRO_TOOLS_CHANNEL RETRO_TOOLS_STRICT RETRO_UPDATE_URL \
+             RETRO_SLIM_DPKG RETRO_TOOLS_CHANNEL RETRO_TOOLS_STRICT RETRO_UPDATE_URL RETRO_UPDATE_REPO \
              RETRO_LOW_TIER_MAX_MB DEBIAN_MIRROR DEBIAN_SECURITY_MIRROR; do
         if [[ -n "${!v:-}" ]]; then CHROOT_ENV+=("${v}=${!v}"); fi
     done
@@ -615,7 +615,7 @@ build_squashfs() {
     # The kernel/initrd stay inside the squashfs on purpose: the Calamares
     # installer copies the squashfs to disk and the target needs /boot/vmlinuz.
     mksquashfs "${CHROOT_DIR}" "${IMAGE_DIR}/live/filesystem.squashfs" \
-        -noappend -comp zstd -Xcompression-level "${SQUASHFS_ZSTD_LEVEL}" -b 1M \
+        -noappend -comp zstd -Xcompression-level "${SQUASHFS_ZSTD_LEVEL}" -b 256k \
         -processors "$(nproc)" -no-progress \
         -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'run/*' 'tmp/*' 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${IMAGE_DIR}/live/filesystem.squashfs" ]] || retro_die "mksquashfs produced no output"

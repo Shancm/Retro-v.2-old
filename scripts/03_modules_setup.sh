@@ -78,9 +78,9 @@ EOF
 #   1. GitHub "latest" release (channel=latest)       -> asset chosen by regex
 #   2. GitHub release for the pinned version          -> asset chosen by regex
 #   3. direct download URL for the pinned version     -> no API needed
-# Integrity: sha256 verified against the release's checksums file when one
-# exists; a MISMATCH always aborts that tool. GITHUB_TOKEN (optional) lifts the
-# anonymous API rate limit.
+# Integrity: GitHub artifact attestation is mandatory and the release checksum
+# must also match. A checksum published beside an asset is not trusted alone.
+# GITHUB_TOKEN (optional) lifts the anonymous API rate limit.
 set -Eeuo pipefail
 
 CONF="/etc/retro-os/tools.conf"
@@ -159,15 +159,28 @@ pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
     return 1
 }
 
-verify_checksum() {   # file asset listing -> verified | unverified | MISMATCH
-    local file="$1" asset="$2" listing="$3" sums_url sums want got
+verify_checksum() {   # file asset listing repo -> verified | unverified | MISMATCH
+    local file="$1" asset="$2" listing="$3" repo="$4" sums_url sums want got
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "unverified"; return 0
+    fi
+    local gh_version
+    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+        echo "unverified"; return 0
+    fi
+    # Verify signed provenance against the exact expected source repository.
+    # A checksum file beside the asset is not publisher authentication.
+    if ! gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
+        echo "unverified"; return 0
+    fi
     sums_url="$(tail -n +2 "${listing}" | awk -F'\t' 'tolower($1) ~ /(checksums?\.txt|sha256sums?(\.txt)?)$/ {print $2; exit}')"
     if [[ -z "${sums_url}" ]]; then echo "unverified"; return 0; fi
     sums="$(curl_dl "${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
     want="$(awk -v a="${asset}" '$2 == a || $2 == "*" a {print $1; exit}' <<< "${sums}")"
-    if [[ -z "${want}" ]]; then echo "unverified"; return 0; fi
+    if [[ ! "${want}" =~ ^[[:xdigit:]]{64}$ ]]; then echo "unverified"; return 0; fi
     got="$(sha256sum "${file}" | awk '{print $1}')"
-    if [[ "${want}" == "${got}" ]]; then echo "verified"; else echo "MISMATCH"; fi
+    if [[ "${want,,}" == "${got}" ]]; then echo "verified"; else echo "MISMATCH"; fi
 }
 
 is_elf() {
@@ -241,9 +254,9 @@ stage_tool() {
         rm -rf "${work}"; return 1
     fi
 
-    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}")"
-    if [[ "${status}" == "MISMATCH" ]]; then
-        warn "${name}: SHA-256 MISMATCH - refusing to install"
+    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}")"
+    if [[ "${status}" != "verified" ]]; then
+        warn "${name}: attestation/checksum status is ${status}; refusing to install an unauthenticated release asset"
         rm -rf "${work}"; return 1
     fi
 
@@ -396,7 +409,7 @@ if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | s
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
 mark XORG_RUNNING "$(yn pgrep -x Xorg)"
-mark AUTOLOGIN_SESSION "$(if loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -qx retro; then echo yes; else echo no; fi)"
+mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
 for p in openbox tint2 pcmanfm nm-applet volumeicon; do
     mark "PROC_${p//-/_}" "$(yn pgrep -u retro -x "${p}")"
 done

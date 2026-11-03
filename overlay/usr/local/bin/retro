@@ -447,14 +447,34 @@ update_scripts() {
     curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "${tmp}/pkg.tar.gz" "${RETRO_UPDATE_URL}" \
         || { warn "download failed - local scripts unchanged"; rm -rf "${tmp}"; return 1; }
 
+    if [[ -z "${RETRO_UPDATE_REPO:-}" ]]; then
+        warn "RETRO_UPDATE_REPO is empty - refusing update without an explicit publisher identity"
+        rm -rf "${tmp}"; return 1
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        warn "GitHub CLI is unavailable - refusing update without publisher attestation verification"
+        rm -rf "${tmp}"; return 1
+    fi
+    local gh_version
+    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+        warn "GitHub CLI 2.67.0+ is required for secure update attestation verification"
+        rm -rf "${tmp}"; return 1
+    fi
+    if ! gh attestation verify "${tmp}/pkg.tar.gz" --repo "${RETRO_UPDATE_REPO}" >/dev/null 2>&1; then
+        warn "GitHub artifact attestation failed for ${RETRO_UPDATE_REPO} - refusing update"
+        rm -rf "${tmp}"; return 1
+    fi
     if curl -fsSL --connect-timeout 15 --max-time 30 -o "${tmp}/pkg.sha256" "${RETRO_UPDATE_URL}.sha256" 2>/dev/null; then
         local want got
         want="$(awk '{print $1; exit}' "${tmp}/pkg.sha256")"
         got="$(sha256sum "${tmp}/pkg.tar.gz" | awk '{print $1}')"
-        [[ "${want}" == "${got}" ]] || { warn "SHA-256 mismatch - refusing to apply update"; rm -rf "${tmp}"; return 1; }
-        ok "SHA-256 verified"
+        [[ "${want}" =~ ^[[:xdigit:]]{64}$ && "${want,,}" == "${got}" ]] || { warn "SHA-256 mismatch - refusing to apply update"; rm -rf "${tmp}"; return 1; }
+        ok "GitHub attestation and SHA-256 verified"
     else
-        warn "no .sha256 published next to the tarball - integrity not verified"
+        warn "no .sha256 published next to the tarball - refusing an unauthenticated update"
+        rm -rf "${tmp}"
+        return 1
     fi
 
     if tar -tzf "${tmp}/pkg.tar.gz" | grep -qE '(^/|(^|/)\.\.(/|$))'; then

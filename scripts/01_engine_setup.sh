@@ -93,6 +93,36 @@ install_base_system() {
 }
 
 # -----------------------------------------------------------------------------
+# 3a. Trusted GitHub CLI for signed artifact provenance
+# -----------------------------------------------------------------------------
+install_github_cli() {
+    retro_info "Installing GitHub CLI from its signed official apt repository"
+    local keyring="/usr/share/keyrings/githubcli-archive-keyring.gpg"
+    local tmp="${keyring}.tmp"
+    install -d -m 0755 /usr/share/keyrings
+    rm -f "${tmp}"
+    curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "${tmp}" \
+        || retro_die "Could not download the GitHub CLI repository keyring"
+    gpg --show-keys "${tmp}" >/dev/null 2>&1 \
+        || retro_die "Downloaded GitHub CLI keyring is not a valid OpenPGP keyring"
+    install -o root -g root -m 0644 "${tmp}" "${keyring}"
+    rm -f "${tmp}"
+    printf 'deb [arch=%s signed-by=%s] https://cli.github.com/packages stable main\n' \
+        "$(dpkg --print-architecture)" "${keyring}" > /etc/apt/sources.list.d/github-cli.list
+
+    retro_retry 3 5 apt-get update
+    retro_apt_install gh
+
+    local gh_version
+    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+        retro_die "GitHub CLI ${gh_version:-unknown} is too old or invalid; version 2.67.0+ is required for secure artifact attestation verification"
+    fi
+    retro_ok "GitHub CLI ${gh_version} supports patched artifact attestation verification"
+}
+
+# -----------------------------------------------------------------------------
 # 4. Kernel, microcode, firmware, live-boot engine
 # -----------------------------------------------------------------------------
 install_kernel_and_live() {
@@ -178,7 +208,7 @@ create_user_and_groups() {
     local g
     # System groups: wireshark-common's postinst runs `addgroup --system wireshark`
     # which FAILS if the group already exists as a regular (non-system) group.
-    for g in autologin nopasswdlogin wireshark audio video plugdev netdev sudo; do
+    for g in wireshark audio video plugdev netdev sudo; do
         getent group "${g}" >/dev/null || groupadd --system "${g}"
     done
 
@@ -194,17 +224,18 @@ create_user_and_groups() {
             --groups "${RETRO_USER_GROUPS}" "${RETRO_USER}"
     fi
 
-    printf '%s:%s\n' "${RETRO_USER}" "${RETRO_USER_PASS}" | chpasswd
-    printf 'root:%s\n' "${RETRO_ROOT_PASS}" | chpasswd
-    usermod --unlock "${RETRO_USER}"
-    chage --inactive -1 --mindays 0 --maxdays 99999 --expiredate -1 "${RETRO_USER}"
+    # Remove memberships left by an older insecure build when resuming a chroot.
+    for g in autologin nopasswdlogin; do
+        gpasswd -d "${RETRO_USER}" "${g}" >/dev/null 2>&1 || true
+    done
 
-    retro_write /etc/sudoers.d/90-retro-nopasswd 0440 <<EOF
-# Retro OS: passwordless sudo for the default live/desktop user
-${RETRO_USER} ALL=(ALL:ALL) NOPASSWD: ALL
-EOF
-    visudo -cf /etc/sudoers.d/90-retro-nopasswd >/dev/null \
-        || retro_die "Generated sudoers file failed visudo validation"
+    # Never bake credentials into the image. Both accounts remain locked
+    # until the live-only credential service provisions a random live password.
+    passwd --lock "${RETRO_USER}"
+    passwd --lock root
+    chage --inactive -1 --mindays 0 --maxdays 99999 --expiredate -1 "${RETRO_USER}"
+    rm -f /etc/sudoers.d/90-retro-nopasswd
+    visudo -c >/dev/null || retro_die "System sudoers configuration failed validation"
 
     retro_write /etc/security/limits.d/90-retro.conf 0644 <<'EOF'
 # Raised descriptor limits for port scanners (RustScan / naabu / ffuf)
@@ -244,6 +275,7 @@ RETRO_STD_EARLYOOM_ARGS="${RETRO_STD_EARLYOOM_ARGS}"
 RETRO_STD_PICOM="${RETRO_STD_PICOM}"
 
 RETRO_UPDATE_URL="${RETRO_UPDATE_URL}"
+RETRO_UPDATE_REPO="${RETRO_UPDATE_REPO}"
 EOF
 
     retro_write /usr/local/sbin/retro-hwprofile 0755 <<'EOF'
@@ -519,6 +551,7 @@ main() {
     install_policy_rc
     configure_apt
     install_base_system
+    install_github_cli
     install_kernel_and_live
     configure_locale_time
     create_user_and_groups
