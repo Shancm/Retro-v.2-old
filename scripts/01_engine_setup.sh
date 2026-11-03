@@ -79,14 +79,14 @@ install_base_system() {
         procps psmisc lsof file less nano bash-completion man-db \
         htop btop \
         iproute2 iputils-ping iw rfkill ethtool net-tools \
-        network-manager wpasupplicant \
-        nftables openssh-client \
+        network-manager wpasupplicant wireless-tools \
+        nftables openssh-client usb-modeswitch usbmuxd ipheth-utils \
         pciutils usbutils parted gdisk e2fsprogs dosfstools mtools ntfs-3g exfatprogs \
         xz-utils zstd bzip2 unzip zip \
-        qrencode espeak-ng alsa-utils \
+        qrencode espeak-ng alsa-utils pipewire pipewire-pulse wireplumber pavucontrol volumeicon-alsa \
         python3 python3-yaml \
         systemd-timesyncd tzdata \
-        bluez blueman rfkill \
+        bluetooth bluez bluez-tools blueman rfkill \
         network-manager network-manager-gnome \
         earlyoom libcap2-bin
 }
@@ -315,8 +315,13 @@ ALGO="${RETRO_ZRAM_ALGO:-zstd}"
 VFS="${RETRO_VFS_CACHE_PRESSURE:-50}"
 
 detect() {
-    MEM_KB="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+    MEM_KB="$(awk '/^MemTotal:[[:space:]]*[0-9]+[[:space:]]+kB$/ {print $2; found=1; exit} END {if (!found) exit 1}' /proc/meminfo)" || {
+        log "ERROR: could not read a valid MemTotal value from /proc/meminfo"
+        return 1
+    }
+    [[ "${MEM_KB}" =~ ^[0-9]+$ ]] || { log "ERROR: invalid MemTotal value: ${MEM_KB}"; return 1; }
     RAM_MB=$(( MEM_KB / 1024 ))
+    (( RAM_MB > 0 )) || { log "ERROR: detected RAM is zero"; return 1; }
     CPUS="$(nproc 2>/dev/null || echo 1)"
 
     local forced=""
@@ -430,7 +435,7 @@ RETRO_ZRAM_STATE=${ZRAM_STATE:-unknown}
 RETRO_ZRAM_ALGO=${ZRAM_ALGO_USED:-n/a}
 RETRO_SWAPPINESS=${SWAPPINESS}
 RETRO_EARLYOOM_ARGS="${OOM_ARGS}"
-RETRO_COMPOSITOR=labwc
+RETRO_DESKTOP=openbox
 EOT
     chmod 0644 "${PROFILE_ENV}.tmp"
     mv -f "${PROFILE_ENV}.tmp" "${PROFILE_ENV}"
@@ -440,7 +445,7 @@ cmd="${1:-apply}"
 case "${cmd}" in
     apply|start)
         detect
-        log "tier=${TIER} (${REASON}) ram=${RAM_MB}MiB cpus=${CPUS} compositor=labwc"
+        log "tier=${TIER} (${REASON}) ram=${RAM_MB}MiB cpus=${CPUS} desktop=openbox"
         apply_zram
         apply_sysctl
         apply_earlyoom
@@ -501,6 +506,7 @@ EOF
     systemctl enable retro-hwprofile.service
     systemctl enable earlyoom.service
     systemctl enable NetworkManager.service
+    systemctl enable bluetooth.service
 }
 
 # -----------------------------------------------------------------------------
