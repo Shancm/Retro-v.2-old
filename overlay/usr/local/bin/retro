@@ -68,7 +68,7 @@ EOF
 }
 
 load_profile() {
-    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_PICOM="?"
+    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_COMPOSITOR="labwc"
     # shellcheck source=/dev/null
     [[ -r "${PROFILE_ENV}" ]] && source "${PROFILE_ENV}"
     return 0
@@ -91,8 +91,8 @@ status_bar() {
     local zr_state="idle" zr_text="off"
     if grep -q '^/dev/zram' /proc/swaps 2>/dev/null; then zr_state="good"; zr_text="${RETRO_ZRAM_PCT:-?}% zstd"; fi
 
-    local comp_state="idle" comp_text="off"
-    if pgrep -x picom >/dev/null 2>&1; then comp_state="good"; comp_text="picom"; fi
+    local comp_state="idle" comp_text="not running"
+    if pgrep -x labwc >/dev/null 2>&1; then comp_state="good"; comp_text="Labwc"; fi
 
     local tier_state="good"
     [[ "${RETRO_TIER}" == "low" ]] && tier_state="bad"
@@ -124,20 +124,20 @@ usage() {
 ${BOLD}Usage:${RST} retro <command> [options]
 
 ${MINT}Session${RST}
-  term                 open the primary terminal (xfce4-terminal)
+  term                 open the primary Wayland terminal (Foot)
   mon                  system monitor (btop, falls back to htop)
   fetch                ASCII system summary (OS, kernel, uptime, RAM, CPU)
   profile              show the adaptive hardware profile in effect
 
 ${MINT}Performance${RST}
-  boost                stop Picom + idle daemons, drop caches, recover RAM now
+  boost                stop selected idle daemons, drop caches, recover RAM now
 
 ${MINT}Utilities${RST}
   share <file> [--port N] [--once] [--ascii] [--bind IP]
                        serve one file over HTTP and show a QR code for your phone
   ai [shell|doctor|watch|status|say]
                        Retro AI offline companion / health audit / watchdog
-  menu                 regenerate the Openbox + Start menus for your user
+  menu                 regenerate the Labwc menu for your user
 
 ${MINT}Maintenance${RST}
   update [--tools] [--no-apt] [--force]
@@ -176,7 +176,16 @@ user_gui() {   # run a command as the desktop user with the GUI environment
     u="$(target_user)"
     [[ -n "${u}" ]] || return 1
     home="$(getent passwd "${u}" | cut -d: -f6)"
-    runuser -u "${u}" -- env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-${home}/.Xauthority}" "$@"
+    local uid runtime
+    uid="$(id -u "${u}")"
+    runtime="/run/user/${uid}"
+    [[ -d "${runtime}" ]] || return 1
+    runuser -u "${u}" -- env \
+        XDG_RUNTIME_DIR="${runtime}" \
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=${runtime}/bus" \
+        DISPLAY="${DISPLAY:-}" \
+        XAUTHORITY="${XAUTHORITY:-${home}/.Xauthority}" "$@"
 }
 
 start_log() {   # <name>
@@ -194,9 +203,9 @@ start_log() {   # <name>
 # term / mon
 # -----------------------------------------------------------------------------
 cmd_term() {
-    [[ -n "${DISPLAY:-}" ]] || die "no graphical session (DISPLAY is empty)"
-    command -v xfce4-terminal >/dev/null 2>&1 || die "xfce4-terminal is not installed"
-    exec xfce4-terminal "$@"
+    [[ -n "${WAYLAND_DISPLAY:-}" || -n "${XDG_RUNTIME_DIR:-}" ]] || die "no Wayland session detected"
+    command -v foot >/dev/null 2>&1 || die "Foot terminal is not installed"
+    exec foot "$@"
 }
 
 cmd_mon() {
@@ -218,53 +227,17 @@ cmd_boost() {
     before="$(mem_available_mb)"
     say "Retro Boost - available RAM before: ${before} MiB"
 
-    local desktop_user desktop_home tint_cfg opaque_cfg
-    desktop_user="$(target_user)"
-    if [[ -n "${desktop_user}" ]]; then
-        desktop_home="$(getent passwd "${desktop_user}" | cut -d: -f6)"
-        install -d -o "${desktop_user}" -g "${desktop_user}" "${desktop_home}/.config/retro" "${desktop_home}/.config/tint2"
-        printf 'off\n' > "${desktop_home}/.config/retro/compositor"
-        chown "${desktop_user}:${desktop_user}" "${desktop_home}/.config/retro/compositor"
-        chmod 0600 "${desktop_home}/.config/retro/compositor"
-        tint_cfg="${desktop_home}/.config/tint2/tint2rc"
-        opaque_cfg="${desktop_home}/.config/tint2/retro-opaque.tint2rc"
-        if [[ -r "${tint_cfg}" ]]; then
-            awk '
-                /^panel_background_id[[:space:]]*=/ { print "panel_background_id = 1"; panel=1; next }
-                /^disable_transparency[[:space:]]*=/ { print "disable_transparency = 1"; disabled=1; next }
-                { print }
-                END {
-                    if (!panel) print "panel_background_id = 1"
-                    if (!disabled) print "disable_transparency = 1"
-                }
-            ' "${tint_cfg}" > "${opaque_cfg}"
-            chown "${desktop_user}:${desktop_user}" "${opaque_cfg}"
-            chmod 0600 "${opaque_cfg}"
-        fi
-    fi
-    if pgrep -x picom >/dev/null 2>&1; then
-        pkill -x picom || true
-        ok "compositor (picom) stopped; persistent preference set to off"
-    else
-        say "compositor already stopped; persistent preference set to off"
-    fi
-    if [[ -n "${desktop_user:-}" && -s "${opaque_cfg:-}" && -n "${DISPLAY:-}" ]]; then
-        pkill -x tint2 2>/dev/null || true
-        runuser -u "${desktop_user}" -- env DISPLAY="${DISPLAY}" \
-            XAUTHORITY="${XAUTHORITY:-${desktop_home}/.Xauthority}" \
-            tint2 -c "${opaque_cfg}" >/dev/null 2>&1 &
-        ok "tint2 restarted with opaque configuration"
-    else
-        warn "opaque tint2 restart skipped (no desktop user/configuration/display)"
-    fi
-
     local -a idle_units=(
-        bluetooth.service ModemManager.service avahi-daemon.service avahi-daemon.socket
+        ModemManager.service avahi-daemon.service avahi-daemon.socket
         cups.service cups.socket cups-browsed.service packagekit.service
     )
     for unit in "${idle_units[@]}"; do
         if systemctl is-active --quiet "${unit}" 2>/dev/null; then
-            if systemctl stop "${unit}" 2>/dev/null; then ok "stopped idle service ${unit}"; else warn "could not stop ${unit}"; fi
+            if systemctl stop "${unit}" 2>/dev/null; then
+                ok "stopped idle service ${unit}"
+            else
+                warn "could not stop ${unit}"
+            fi
         fi
     done
 
@@ -282,9 +255,6 @@ cmd_boost() {
     ok "available RAM now: ${after} MiB (recovered $(( after - before )) MiB)"
 }
 
-# -----------------------------------------------------------------------------
-# share
-# -----------------------------------------------------------------------------
 cmd_share() {
     local file="" port=8000 once=0 ascii=0 bind="0.0.0.0"
     while [[ $# -gt 0 ]]; do
@@ -448,7 +418,7 @@ cmd_fetch() {
         "${MINT}CPU${RST}     ${cpu:-unknown} (${cores} cores)"
         "${MINT}RAM${RST}     ${ram_used} MiB / ${ram_total} MiB   ${DIM}swap: ${swap_zram}${RST}"
         "${MINT}Disk${RST}    ${disk}"
-        "${MINT}Tier${RST}    ${RETRO_TIER} ${DIM}(compositor: ${RETRO_PICOM})${RST}"
+        "${MINT}Tier${RST}    ${RETRO_TIER} ${DIM}(session: ${RETRO_COMPOSITOR})${RST}"
         "${MINT}Shell${RST}   ${shell_name}   ${DIM}pkgs: ${pkgs}${RST}"
     )
     local i rows="${#info[@]}"
@@ -705,10 +675,10 @@ cmd_update() {
     if [[ -n "${tu}" ]]; then
         home="$(getent passwd "${tu}" | cut -d: -f6)"
         runuser -u "${tu}" -- "${HELPER_DIR}/retro-menu-gen" --user "${home}" || warn "user menu regeneration failed"
-        if user_gui openbox --reconfigure 2>/dev/null; then
-            ok "Openbox reconfigured"
+        if user_gui labwc --reconfigure 2>/dev/null; then
+            ok "Labwc menu reloaded"
         else
-            say "Openbox not reachable (menus apply at next login)"
+            say "Labwc is not reachable (menus apply at next login)"
         fi
     fi
     ok "retro update finished"
@@ -877,8 +847,10 @@ cmd_profile() {
 cmd_menu() {
     [[ -x "${HELPER_DIR}/retro-menu-gen" ]] || die "retro-menu-gen missing"
     "${HELPER_DIR}/retro-menu-gen" --user "${HOME}"
-    if [[ -n "${DISPLAY:-}" ]] && command -v openbox >/dev/null 2>&1; then
-        openbox --reconfigure && ok "Openbox menu reloaded"
+    if user_gui labwc --reconfigure 2>/dev/null; then
+        ok "Labwc menu reloaded"
+    else
+        say "Labwc is not reachable (menus apply at next login)"
     fi
 }
 
