@@ -192,7 +192,7 @@ test_home() {
             fail "${base}/Labwc CLI menu entries open in persistent Foot terminals" "retro-menu-gen --system/--user"
         fi
         check "${base}/Waybar launcher opens Wofi" "set custom/launcher on-click=wofi --show drun" \
-            grep -q 'wofi --show drun' "${base}/.config/waybar/config"
+            grep -q "wofi --show drun" "${base}/.config/waybar/config"
     done
 
     local wp="/usr/share/backgrounds/retro-os/wallpaper.png"
@@ -337,7 +337,7 @@ main() {
 main "$@"
  /usr/local/bin/retro-labwc-session
     check "report-only autologin absent from built image" "autologin may only be created at boot with retro.report=1" test ! -e /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
-    check "live fixup scopes autologin to report mode" "keep autologin behind retro.report=1" grep -A7 -B1 -q 'retro.report=1' "${RETRO_HELPER_DIR}/retro-live-fixup"
+    check "live fixup scopes autologin to report mode" "keep autologin behind retro.report=1" grep -A7 -B1 -q "retro.report=1" "${RETRO_HELPER_DIR}/retro-live-fixup"
     check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
