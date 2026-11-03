@@ -1047,19 +1047,6 @@ main() {
     retro_ok "=== 02_interface_setup.sh: complete ==="
 }
 
-main "$@"
- ||
-       [[ ! -s /etc/pam.d/lightdm || ! -s /etc/pam.d/lightdm-autologin ]]; then
-        retro_info "Restoring the package-provided LightDM PAM stack"
-        retro_retry 3 5 apt-get             -o Dpkg::Options::=--force-confnew             -o Dpkg::Options::=--force-confmiss             --reinstall install -y lightdm
-    fi
-    rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
-
-    echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
-    systemctl enable lightdm.service
-    systemctl set-default graphical.target
-}
-
 # -----------------------------------------------------------------------------
 # 4. Helper scripts
 # -----------------------------------------------------------------------------
