@@ -250,7 +250,7 @@ jobs:
     name: Publish ISO release
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, firmware]
     timeout-minutes: 10
     permissions:
       contents: write
