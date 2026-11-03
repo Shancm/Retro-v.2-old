@@ -357,10 +357,10 @@ xml_escape() {
     # Use sed replacement escaping: Bash parameter-substitution replacement
     # treats '&' specially and can silently generate malformed XML.
     printf '%s' "$1" | sed \
-        -e 's/&/\\&amp;/g' \
-        -e 's/</\\&lt;/g' \
-        -e 's/>/\\&gt;/g' \
-        -e 's/"/\\&quot;/g'
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/"/\&quot;/g'
 }
 load_entries() {
     local f line cat label bin args icon mtype
