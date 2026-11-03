@@ -22,7 +22,7 @@ ORIG_ARGS=()
 
 RETRO_OS_NAME="Retro OS"
 RETRO_OS_VERSION="2.0"
-RETRO_OS_EDITION="Tactical"
+RETRO_OS_EDITION="Community"
 RETRO_FOUNDER="Shan CM"
 RETRO_BASE=""
 RETRO_UPDATE_URL=""
@@ -806,7 +806,7 @@ EOF
     command -v rfkill >/dev/null 2>&1 && rfkill block all 2>/dev/null || true
     command -v nmcli >/dev/null 2>&1 && nmcli networking off 2>/dev/null || true
 
-    local dev nft_ok=0 links_ok=1 lock_ok=0 state
+    local dev devpath nft_ok=0 links_ok=1 lock_ok=0 state
     local -a interfaces=()
     if command -v nft >/dev/null 2>&1 && nft list table inet retro_panic >/dev/null 2>&1; then
         nft_ok=1
