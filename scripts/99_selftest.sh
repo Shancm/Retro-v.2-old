@@ -135,7 +135,7 @@ test_login_stack() {
     check "Wayland session wrapper has valid shell syntax" "fix retro-labwc-session" sh -n /usr/local/bin/retro-labwc-session
     check "Wayland session wrapper starts Labwc" "Exec must end in /usr/bin/labwc" grep -q "^exec /usr/bin/labwc$" /usr/local/bin/retro-labwc-session
     check "report-only autologin absent from built image" "autologin may only be created at boot with retro.report=1" test ! -e /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
-    check "report autologin is gated by retro.report=1" "guard the report-only LightDM drop-in in 02_interface_setup.sh" grep -q "retro.report=1" "${RETRO_ROOT}/scripts/02_interface_setup.sh"
+    check "report autologin is gated by retro.report=1" "guard the report-only LightDM drop-in in 02_interface_setup.sh" grep -q "retro.report=1" "${SELF_DIR}/02_interface_setup.sh"
     check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "report-only autologin absent from built image" "autologin may only be created at boot with retro.report=1" test ! -e /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
