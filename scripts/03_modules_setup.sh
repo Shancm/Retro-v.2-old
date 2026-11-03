@@ -177,14 +177,14 @@ verify_checksum() {   # file asset listing repo -> verified | verified-attested 
         }')"
     if [[ -z "${sums_url}" ]]; then echo "verified-attested"; return 0; fi
     sums="$(curl_dl "${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
-    want="$(printf '%s\\n' "${sums}" | python3 -c '
+    want="$(printf '%s\n' "${sums}" | python3 -c '
 import os,re,sys
 asset=os.path.basename(sys.argv[1])
 for line in sys.stdin:
  m=re.match(r"^\s*([0-9a-fA-F]{64})\s+[* ]?(.+?)\s*$",line)
  if m and os.path.basename(m.group(2))==asset:
   print(m.group(1).lower()); break
- m=re.match(r"^\s*SHA256\s*\\((.+?)\\)\s*=\s*([0-9a-fA-F]{64})\s*$",line,re.I)
+ m=re.match(r"^\s*SHA256\s*\((.+?)\)\s*=\s*([0-9a-fA-F]{64})\s*$",line,re.I)
  if m and os.path.basename(m.group(1))==asset:
   print(m.group(2).lower()); break
 ' "${asset}")"
@@ -257,12 +257,12 @@ stage_tool() {
         used="pinned-direct"
         warn "\${name}: falling back to direct pinned URL"
         # Load the pinned release's own asset/checksum listing.
-        if gh_release_json "\${REPO}" "\${tag}" "\${json}" 2>/dev/null; then
-            parse_release "\${json}" > "\${listing}" || true
-            pinned_tag="$(head -n1 "\${listing}")"
-            [[ -n "\${pinned_tag}" ]] && tag="\${pinned_tag}"
+        if gh_release_json "${REPO}" "${tag}" "${json}" 2>/dev/null; then
+            parse_release "${json}" > "${listing}" || true
+            pinned_tag="$(head -n1 "${listing}")"
+            [[ -n "${pinned_tag}" ]] && tag="${pinned_tag}"
         else
-            : > "\${listing}"
+            : > "${listing}"
         fi
     fi
 
