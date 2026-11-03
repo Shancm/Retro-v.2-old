@@ -110,10 +110,10 @@ test_user() {
 }
 
 # -----------------------------------------------------------------------------
-# 2. Login stack (LightDM + PAM + Wayland session entry points)
+# 2. Login stack (LightDM + PAM + X11/Openbox session entry points)
 # -----------------------------------------------------------------------------
 test_login_stack() {
-    retro_info "[2/7] LightDM / PAM / Labwc Wayland session"
+    retro_info "[2/7] LightDM / PAM / Openbox X11 session"
     local f base
     check "package-provided LightDM autologin PAM service is intact" "restore the lightdm package PAM files; do not delete /etc/pam.d/lightdm-autologin" bash -c 'dpkg-query -S /etc/pam.d/lightdm-autologin >/dev/null 2>&1 && test -s /etc/pam.d/lightdm-autologin'
     if lightdm_pam_clean; then
@@ -130,10 +130,8 @@ test_login_stack() {
         fi
         check "${f} selects Retro OS Wayland session" "set user-session=retro-os" grep -q '^user-session=retro-os$' "${f}"
     done
-    check "Retro OS Wayland session descriptor exists" "02_interface_setup.sh install_branding_assets" test -s /usr/share/wayland-sessions/retro-os.desktop
-    check "Wayland session wrapper exists and is executable" "install /usr/local/bin/retro-labwc-session" test -x /usr/local/bin/retro-labwc-session
-    check "Wayland session wrapper has valid shell syntax" "fix retro-labwc-session" sh -n /usr/local/bin/retro-labwc-session
-    check "Wayland session wrapper starts Labwc" "Exec must end in /usr/bin/labwc" grep -q "^exec /usr/bin/labwc$" /usr/local/bin/retro-labwc-session
+    check "Retro OS X11 session descriptor exists" "02_interface_setup.sh install_branding_assets" test -s /usr/share/xsessions/retro-os.desktop
+    check "Retro OS session starts Openbox" "set Exec=openbox-session" grep -q "^Exec=openbox-session$" /usr/share/xsessions/retro-os.desktop
     check "report-only autologin absent from built image" "autologin may only be created at boot with retro.report=1" test ! -e /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
     check "live fixup scopes autologin to report mode" "keep the report-only LightDM drop-in behind retro.report=1" grep -A8 -B1 -q "retro.report=1" "${RETRO_HELPER_DIR}/retro-live-fixup"
     check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
@@ -151,21 +149,21 @@ test_login_stack() {
     check "Xwrapper.config" "restore /opt/retro-os/templates/Xwrapper.config" test -s /etc/X11/Xwrapper.config
 
     for base in /etc/skel "${HOME_DIR}"; do
-        check "${base}/.config/labwc/autostart exists" "re-run 02_interface_setup.sh write_skel_session" test -x "${base}/.config/labwc/autostart"
-        check "${base}/.config/labwc/environment exists" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/.config/labwc/environment"
+        check "${base}/.config/openbox/autostart exists" "re-run 02_interface_setup.sh write_skel_session" test -x "${base}/.config/openbox/autostart"
+        check "${base}/.config/openbox/rc.xml exists" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/.config/openbox/rc.xml"
     done
 
     local unit
-    for unit in lightdm retro-live-fixup retro-live-credentials retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
+    for unit in lightdm bluetooth retro-live-fixup retro-live-credentials retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
         check "unit enabled: ${unit}" "systemctl enable ${unit}.service" systemctl is-enabled --quiet "${unit}.service"
     done
 }
 
 # -----------------------------------------------------------------------------
-# 3. Home / skeleton ownership and Wayland desktop configs
+# 3. Home / skeleton ownership and X11 desktop configs
 # -----------------------------------------------------------------------------
 test_home() {
-    retro_info "[3/7] home + Wayland desktop skeleton"
+    retro_info "[3/7] home + Openbox/Tint2/jgmenu desktop skeleton"
     check "${HOME_DIR} exists" "98_finalize.sh sync_home_from_skel" test -d "${HOME_DIR}"
     if [[ -z "$(find "${HOME_DIR}" \( ! -user "${RETRO_USER}" -o ! -group "${RETRO_USER}" \) -print -quit 2>/dev/null)" ]]; then
         pass "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}"
@@ -181,24 +179,463 @@ test_home() {
 
     local base f
     for base in /etc/skel "${HOME_DIR}"; do
-        for f in .config/labwc/rc.xml .config/labwc/menu.xml .config/labwc/autostart \
-                 .config/labwc/environment .config/labwc/themerc-override .config/waybar/config .config/waybar/style.css \
-                 .config/foot/foot.ini .config/wofi/style.css; do
+        for f in .config/openbox/rc.xml .config/openbox/menu.xml .config/openbox/autostart \
+                 .config/tint2/tint2rc .config/jgmenu/jgmenurc; do
             check "${base}/${f}" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/${f}"
         done
-        for f in .config/labwc/rc.xml .config/labwc/menu.xml; do
-            check "${base}/${f} is valid XML" "inspect Labwc configuration XML" \
+        for f in .config/openbox/rc.xml .config/openbox/menu.xml; do
+            check "${base}/${f} is valid XML" "inspect Openbox configuration XML" \
                 python3 -c "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])" "${base}/${f}"
         done
-        check "${base}/.config/waybar/config is valid JSON" "fix Waybar JSON config" \
-            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${base}/.config/waybar/config"
-        if grep -q "foot --hold -e bash -lc" "${base}/.config/labwc/menu.xml"; then
-            pass "${base}/Labwc CLI menu entries open in persistent Foot terminals"
+        check "${base}/Openbox title buttons use NLIMC" "set titleLayout NLIMC" \
+            grep -q '<titleLayout>NLIMC</titleLayout>' "${base}/.config/openbox/rc.xml"
+        check "${base}/Tint2 panel uses LTSC at 32px" "set panel_items=LTSC and panel_size=100% 32" \
+            bash -c "grep -q '^panel_items = LTSC
+    done
+
+    local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
+    png_magic="${png_magic//[[:space:]]/}"
+    if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]]; then
+        pass "wallpaper present and a valid PNG (${wp})"
+    else
+        fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# 4. Kernel / initramfs
+# -----------------------------------------------------------------------------
+test_boot_files() {
+    retro_info "[4/7] kernel + initramfs"
+    local k found=0
+    for k in /boot/vmlinuz-*; do
+        [[ -e "${k}" ]] || continue
+        found=1
+        local ver="${k#/boot/vmlinuz-}" initrd="/boot/initrd.img-${k#/boot/vmlinuz-}"
+        if [[ -s "${k}" ]]; then pass "kernel ${k} non-empty"; else fail "kernel ${k} non-empty" "reinstall linux-image-amd64"; fi
+        if [[ -s "${initrd}" ]]; then
+            pass "initramfs ${initrd} non-empty"
+            
+            # unmkinitramfs വഴി മൈക്രോകോഡും പ്രധാന ആർക്കൈവും പൂർണ്ണമായി പരിശോധിക്കുന്നു
+            local contents=""
+            local tmp_test
+            tmp_test="$(mktemp -d)"
+            if unmkinitramfs "${initrd}" "${tmp_test}" 2>/dev/null; then
+                contents="$(find "${tmp_test}" 2>/dev/null)"
+            else
+                contents="$(lsinitramfs "${initrd}" 2>/dev/null || true)"
+            fi
+            rm -rf "${tmp_test}"
+
+            if grep -q "scripts/live" <<< "${contents}"; then
+                pass "initramfs ${ver} contains live-boot scripts"
+            else
+                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
+            fi
+            if grep -Eq "squashfs|overlay" <<< "${contents}"; then
+                pass "initramfs ${ver} has squashfs/overlay support"
+            else
+                fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
+            fi
         else
-            fail "${base}/Labwc CLI menu entries open in persistent Foot terminals" "retro-menu-gen --system/--user"
+            fail "initramfs ${initrd} non-empty" "update-initramfs -c -k ${ver}"
         fi
-        check "${base}/Waybar launcher opens Wofi" "set custom/launcher on-click=wofi --show drun" \
-            grep -q "wofi --show drun" "${base}/.config/waybar/config"
+    done
+    if (( found == 0 )); then fail "kernel image in /boot" "01_engine_setup.sh install_kernel_and_live failed"; fi
+}
+
+# -----------------------------------------------------------------------------
+# 5. Binaries, scripts, payload
+# -----------------------------------------------------------------------------
+test_payload() {
+    retro_info "[5/7] binaries / scripts / payload"
+    local ghv=""
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0 && gh attestation verify --help >/dev/null 2>&1; then
+        pass "GitHub CLI version supports secure attestations (${ghv})"
+    else
+        ghv="${ghv:-not installed or version unreadable}"
+        fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
+    fi
+    local b
+    for b in openbox openbox-session obconf tint2 jgmenu_run lxterminal feh Xorg pkexec lightdm gh pcmanfm nm-applet blueman-applet volumeicon \
+             nmap tshark aircrack-ng hydra john nikto sqlmap wifite ffuf qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
+        check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
+    done
+    check "X11 server binary installed" "install xserver-xorg-core" command -v Xorg
+    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/libexec/polkit-mate-authentication-agent-1
+    check "polkit daemon installed" "install the polkitd package" test -x /usr/lib/polkit-1/polkitd
+    for b in rustscan ffuf httpx naabu; do
+        if command -v "${b}" >/dev/null 2>&1; then
+            pass "modern tool: ${b}"
+        elif [[ "${RETRO_TOOLS_STRICT}" == "1" ]]; then
+            fail "modern tool: ${b}" "retro-fetch-tools ${b}; each release needs valid GitHub attestation and SHA-256"
+        else
+            soft "modern tool missing: ${b}" "run on the live system: sudo ${RETRO_HELPER_DIR}/retro-fetch-tools ${b}"
+        fi
+    done
+    check "grub-btrfs installed" "04_installer_setup.sh install_grub_btrfs (network/GitHub?)" test -x /etc/grub.d/41_snapshots-btrfs
+
+    check "retro CLI present + executable" "overlay/usr/local/bin/retro" test -x "${RETRO_BIN_DIR}/retro"
+    check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
+    check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
+    check "retro_ai.py compiles" "python3 -m py_compile ${RETRO_AI_DIR}/retro_ai.py" python3 -m py_compile "${RETRO_AI_DIR}/retro_ai.py"
+    find "${RETRO_AI_DIR}" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+    local s
+    for s in "${RETRO_HELPER_DIR}"/*; do
+        [[ -f "${s}" ]] || continue
+        check "bash -n $(basename "${s}")" "syntax error in ${s}" bash -n "${s}"
+    done
+    check "bash -n retro-hwprofile" "syntax error" bash -n /usr/local/sbin/retro-hwprofile
+    check "policy-rc.d removed" "98_finalize.sh cleanup_chroot (services would be blocked)" test ! -e /usr/sbin/policy-rc.d
+    check "dpkg consistent" "dpkg --configure -a" dpkg_audit_clean
+}
+
+# -----------------------------------------------------------------------------
+# 6. Runtime tuning files
+# -----------------------------------------------------------------------------
+test_tuning() {
+    retro_info "[6/7] adaptive engine files"
+    check "retro.conf" "01_engine_setup.sh install_hw_profile_engine" test -s "${RETRO_ETC_DIR}/retro.conf"
+    check "sysctl baseline (BBR)" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "tcp_congestion_control = bbr" /etc/sysctl.d/99-retro-desktop.conf
+    check "sysctl vfs_cache_pressure=50" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "vm.vfs_cache_pressure = 50" /etc/sysctl.d/99-retro-desktop.conf
+    check "autogroup sysctl" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "kernel.sched_autogroup_enabled = 1" /etc/sysctl.d/99-retro-desktop.conf
+    check "tcp_bbr in modules-load" "restore /etc/modules-load.d/retro-net.conf" grep -q "^tcp_bbr" /etc/modules-load.d/retro-net.conf
+    check "hwprofile low-tier zstd/75%" "RETRO_LOW_ZRAM_PCT / RETRO_ZRAM_ALGO in config.env" \
+        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_ZRAM_ALGO=\"zstd\"' ${RETRO_ETC_DIR}/retro.conf"
+    check "low-tier earlyoom -m 4 -s 8" "RETRO_LOW_EARLYOOM_ARGS in config.env" \
+        grep -q "RETRO_LOW_EARLYOOM_ARGS=\"-m 4 -s 8\"" "${RETRO_ETC_DIR}/retro.conf"
+    check "retro-ai.conf" "03_modules_setup.sh install_retro_ai" test -s "${RETRO_ETC_DIR}/retro-ai.conf"
+}
+
+# -----------------------------------------------------------------------------
+# 7. Summary
+# -----------------------------------------------------------------------------
+summary() {
+    retro_info "[7/7] summary"
+    printf 'SELFTEST: SUMMARY pass=%d fail=%d warn=%d\n' "${PASS}" "${FAIL}" "${WARN}"
+    if (( FAIL > 0 )); then
+        retro_error "In-chroot self-test FAILED (${FAIL} critical). The ISO build is halted - fix the items marked '-> fix:' above."
+        exit 1
+    fi
+    retro_ok "In-chroot self-test passed (${PASS} checks, ${WARN} warnings)"
+}
+
+main() {
+    retro_info "=== 99_selftest.sh: start ==="
+    test_user
+    test_login_stack
+    test_home
+    test_boot_files
+    test_payload
+    test_tuning
+    summary
+}
+
+main "$@"
+ '${base}/.config/tint2/tint2rc' && grep -q '^panel_size = 100% 32
+    done
+
+    local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
+    png_magic="${png_magic//[[:space:]]/}"
+    if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]]; then
+        pass "wallpaper present and a valid PNG (${wp})"
+    else
+        fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# 4. Kernel / initramfs
+# -----------------------------------------------------------------------------
+test_boot_files() {
+    retro_info "[4/7] kernel + initramfs"
+    local k found=0
+    for k in /boot/vmlinuz-*; do
+        [[ -e "${k}" ]] || continue
+        found=1
+        local ver="${k#/boot/vmlinuz-}" initrd="/boot/initrd.img-${k#/boot/vmlinuz-}"
+        if [[ -s "${k}" ]]; then pass "kernel ${k} non-empty"; else fail "kernel ${k} non-empty" "reinstall linux-image-amd64"; fi
+        if [[ -s "${initrd}" ]]; then
+            pass "initramfs ${initrd} non-empty"
+            
+            # unmkinitramfs വഴി മൈക്രോകോഡും പ്രധാന ആർക്കൈവും പൂർണ്ണമായി പരിശോധിക്കുന്നു
+            local contents=""
+            local tmp_test
+            tmp_test="$(mktemp -d)"
+            if unmkinitramfs "${initrd}" "${tmp_test}" 2>/dev/null; then
+                contents="$(find "${tmp_test}" 2>/dev/null)"
+            else
+                contents="$(lsinitramfs "${initrd}" 2>/dev/null || true)"
+            fi
+            rm -rf "${tmp_test}"
+
+            if grep -q "scripts/live" <<< "${contents}"; then
+                pass "initramfs ${ver} contains live-boot scripts"
+            else
+                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
+            fi
+            if grep -Eq "squashfs|overlay" <<< "${contents}"; then
+                pass "initramfs ${ver} has squashfs/overlay support"
+            else
+                fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
+            fi
+        else
+            fail "initramfs ${initrd} non-empty" "update-initramfs -c -k ${ver}"
+        fi
+    done
+    if (( found == 0 )); then fail "kernel image in /boot" "01_engine_setup.sh install_kernel_and_live failed"; fi
+}
+
+# -----------------------------------------------------------------------------
+# 5. Binaries, scripts, payload
+# -----------------------------------------------------------------------------
+test_payload() {
+    retro_info "[5/7] binaries / scripts / payload"
+    local ghv=""
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0 && gh attestation verify --help >/dev/null 2>&1; then
+        pass "GitHub CLI version supports secure attestations (${ghv})"
+    else
+        ghv="${ghv:-not installed or version unreadable}"
+        fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
+    fi
+    local b
+    for b in labwc waybar foot wofi swaybg mako pkexec lightdm gh pcmanfm nm-applet volumeicon \
+             grim slurp wl-copy Xwayland nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
+             qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
+        check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
+    done
+    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/libexec/polkit-mate-authentication-agent-1
+    check "polkit daemon installed" "install the polkitd package" test -x /usr/lib/polkit-1/polkitd
+    for b in rustscan ffuf httpx naabu; do
+        if command -v "${b}" >/dev/null 2>&1; then
+            pass "modern tool: ${b}"
+        elif [[ "${RETRO_TOOLS_STRICT}" == "1" ]]; then
+            fail "modern tool: ${b}" "retro-fetch-tools ${b}; each release needs valid GitHub attestation and SHA-256"
+        else
+            soft "modern tool missing: ${b}" "run on the live system: sudo ${RETRO_HELPER_DIR}/retro-fetch-tools ${b}"
+        fi
+    done
+    check "grub-btrfs installed" "04_installer_setup.sh install_grub_btrfs (network/GitHub?)" test -x /etc/grub.d/41_snapshots-btrfs
+
+    check "retro CLI present + executable" "overlay/usr/local/bin/retro" test -x "${RETRO_BIN_DIR}/retro"
+    check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
+    check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
+    check "retro_ai.py compiles" "python3 -m py_compile ${RETRO_AI_DIR}/retro_ai.py" python3 -m py_compile "${RETRO_AI_DIR}/retro_ai.py"
+    find "${RETRO_AI_DIR}" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+    local s
+    for s in "${RETRO_HELPER_DIR}"/*; do
+        [[ -f "${s}" ]] || continue
+        check "bash -n $(basename "${s}")" "syntax error in ${s}" bash -n "${s}"
+    done
+    check "bash -n retro-hwprofile" "syntax error" bash -n /usr/local/sbin/retro-hwprofile
+    check "policy-rc.d removed" "98_finalize.sh cleanup_chroot (services would be blocked)" test ! -e /usr/sbin/policy-rc.d
+    check "dpkg consistent" "dpkg --configure -a" dpkg_audit_clean
+}
+
+# -----------------------------------------------------------------------------
+# 6. Runtime tuning files
+# -----------------------------------------------------------------------------
+test_tuning() {
+    retro_info "[6/7] adaptive engine files"
+    check "retro.conf" "01_engine_setup.sh install_hw_profile_engine" test -s "${RETRO_ETC_DIR}/retro.conf"
+    check "sysctl baseline (BBR)" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "tcp_congestion_control = bbr" /etc/sysctl.d/99-retro-desktop.conf
+    check "sysctl vfs_cache_pressure=50" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "vm.vfs_cache_pressure = 50" /etc/sysctl.d/99-retro-desktop.conf
+    check "autogroup sysctl" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "kernel.sched_autogroup_enabled = 1" /etc/sysctl.d/99-retro-desktop.conf
+    check "tcp_bbr in modules-load" "restore /etc/modules-load.d/retro-net.conf" grep -q "^tcp_bbr" /etc/modules-load.d/retro-net.conf
+    check "hwprofile low-tier zstd/75%" "RETRO_LOW_ZRAM_PCT / RETRO_ZRAM_ALGO in config.env" \
+        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_ZRAM_ALGO=\"zstd\"' ${RETRO_ETC_DIR}/retro.conf"
+    check "low-tier earlyoom -m 4 -s 8" "RETRO_LOW_EARLYOOM_ARGS in config.env" \
+        grep -q "RETRO_LOW_EARLYOOM_ARGS=\"-m 4 -s 8\"" "${RETRO_ETC_DIR}/retro.conf"
+    check "retro-ai.conf" "03_modules_setup.sh install_retro_ai" test -s "${RETRO_ETC_DIR}/retro-ai.conf"
+}
+
+# -----------------------------------------------------------------------------
+# 7. Summary
+# -----------------------------------------------------------------------------
+summary() {
+    retro_info "[7/7] summary"
+    printf 'SELFTEST: SUMMARY pass=%d fail=%d warn=%d\n' "${PASS}" "${FAIL}" "${WARN}"
+    if (( FAIL > 0 )); then
+        retro_error "In-chroot self-test FAILED (${FAIL} critical). The ISO build is halted - fix the items marked '-> fix:' above."
+        exit 1
+    fi
+    retro_ok "In-chroot self-test passed (${PASS} checks, ${WARN} warnings)"
+}
+
+main() {
+    retro_info "=== 99_selftest.sh: start ==="
+    test_user
+    test_login_stack
+    test_home
+    test_boot_files
+    test_payload
+    test_tuning
+    summary
+}
+
+main "$@"
+ '${base}/.config/tint2/tint2rc'"
+        check "${base}/Openbox autostart launches desktop/tray apps" "restore pcmanfm, tint2, nm-applet, blueman-applet and volumeicon autostart lines" \
+            bash -c "for p in 'pcmanfm --desktop' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'volumeicon &'; do grep -Fq \"\$p\" '${base}/.config/openbox/autostart' || exit 1; done"
+        check "${base}/Start launcher calls jgmenu_run" "set Exec=jgmenu_run in retro-start.desktop" \
+            grep -q '^Exec=jgmenu_run
+    done
+
+    local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
+    png_magic="${png_magic//[[:space:]]/}"
+    if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]]; then
+        pass "wallpaper present and a valid PNG (${wp})"
+    else
+        fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# 4. Kernel / initramfs
+# -----------------------------------------------------------------------------
+test_boot_files() {
+    retro_info "[4/7] kernel + initramfs"
+    local k found=0
+    for k in /boot/vmlinuz-*; do
+        [[ -e "${k}" ]] || continue
+        found=1
+        local ver="${k#/boot/vmlinuz-}" initrd="/boot/initrd.img-${k#/boot/vmlinuz-}"
+        if [[ -s "${k}" ]]; then pass "kernel ${k} non-empty"; else fail "kernel ${k} non-empty" "reinstall linux-image-amd64"; fi
+        if [[ -s "${initrd}" ]]; then
+            pass "initramfs ${initrd} non-empty"
+            
+            # unmkinitramfs വഴി മൈക്രോകോഡും പ്രധാന ആർക്കൈവും പൂർണ്ണമായി പരിശോധിക്കുന്നു
+            local contents=""
+            local tmp_test
+            tmp_test="$(mktemp -d)"
+            if unmkinitramfs "${initrd}" "${tmp_test}" 2>/dev/null; then
+                contents="$(find "${tmp_test}" 2>/dev/null)"
+            else
+                contents="$(lsinitramfs "${initrd}" 2>/dev/null || true)"
+            fi
+            rm -rf "${tmp_test}"
+
+            if grep -q "scripts/live" <<< "${contents}"; then
+                pass "initramfs ${ver} contains live-boot scripts"
+            else
+                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
+            fi
+            if grep -Eq "squashfs|overlay" <<< "${contents}"; then
+                pass "initramfs ${ver} has squashfs/overlay support"
+            else
+                fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
+            fi
+        else
+            fail "initramfs ${initrd} non-empty" "update-initramfs -c -k ${ver}"
+        fi
+    done
+    if (( found == 0 )); then fail "kernel image in /boot" "01_engine_setup.sh install_kernel_and_live failed"; fi
+}
+
+# -----------------------------------------------------------------------------
+# 5. Binaries, scripts, payload
+# -----------------------------------------------------------------------------
+test_payload() {
+    retro_info "[5/7] binaries / scripts / payload"
+    local ghv=""
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0 && gh attestation verify --help >/dev/null 2>&1; then
+        pass "GitHub CLI version supports secure attestations (${ghv})"
+    else
+        ghv="${ghv:-not installed or version unreadable}"
+        fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
+    fi
+    local b
+    for b in labwc waybar foot wofi swaybg mako pkexec lightdm gh pcmanfm nm-applet volumeicon \
+             grim slurp wl-copy Xwayland nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
+             qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
+        check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
+    done
+    check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/libexec/polkit-mate-authentication-agent-1
+    check "polkit daemon installed" "install the polkitd package" test -x /usr/lib/polkit-1/polkitd
+    for b in rustscan ffuf httpx naabu; do
+        if command -v "${b}" >/dev/null 2>&1; then
+            pass "modern tool: ${b}"
+        elif [[ "${RETRO_TOOLS_STRICT}" == "1" ]]; then
+            fail "modern tool: ${b}" "retro-fetch-tools ${b}; each release needs valid GitHub attestation and SHA-256"
+        else
+            soft "modern tool missing: ${b}" "run on the live system: sudo ${RETRO_HELPER_DIR}/retro-fetch-tools ${b}"
+        fi
+    done
+    check "grub-btrfs installed" "04_installer_setup.sh install_grub_btrfs (network/GitHub?)" test -x /etc/grub.d/41_snapshots-btrfs
+
+    check "retro CLI present + executable" "overlay/usr/local/bin/retro" test -x "${RETRO_BIN_DIR}/retro"
+    check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
+    check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
+    check "retro_ai.py compiles" "python3 -m py_compile ${RETRO_AI_DIR}/retro_ai.py" python3 -m py_compile "${RETRO_AI_DIR}/retro_ai.py"
+    find "${RETRO_AI_DIR}" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+    local s
+    for s in "${RETRO_HELPER_DIR}"/*; do
+        [[ -f "${s}" ]] || continue
+        check "bash -n $(basename "${s}")" "syntax error in ${s}" bash -n "${s}"
+    done
+    check "bash -n retro-hwprofile" "syntax error" bash -n /usr/local/sbin/retro-hwprofile
+    check "policy-rc.d removed" "98_finalize.sh cleanup_chroot (services would be blocked)" test ! -e /usr/sbin/policy-rc.d
+    check "dpkg consistent" "dpkg --configure -a" dpkg_audit_clean
+}
+
+# -----------------------------------------------------------------------------
+# 6. Runtime tuning files
+# -----------------------------------------------------------------------------
+test_tuning() {
+    retro_info "[6/7] adaptive engine files"
+    check "retro.conf" "01_engine_setup.sh install_hw_profile_engine" test -s "${RETRO_ETC_DIR}/retro.conf"
+    check "sysctl baseline (BBR)" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "tcp_congestion_control = bbr" /etc/sysctl.d/99-retro-desktop.conf
+    check "sysctl vfs_cache_pressure=50" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "vm.vfs_cache_pressure = 50" /etc/sysctl.d/99-retro-desktop.conf
+    check "autogroup sysctl" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q "kernel.sched_autogroup_enabled = 1" /etc/sysctl.d/99-retro-desktop.conf
+    check "tcp_bbr in modules-load" "restore /etc/modules-load.d/retro-net.conf" grep -q "^tcp_bbr" /etc/modules-load.d/retro-net.conf
+    check "hwprofile low-tier zstd/75%" "RETRO_LOW_ZRAM_PCT / RETRO_ZRAM_ALGO in config.env" \
+        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_ZRAM_ALGO=\"zstd\"' ${RETRO_ETC_DIR}/retro.conf"
+    check "low-tier earlyoom -m 4 -s 8" "RETRO_LOW_EARLYOOM_ARGS in config.env" \
+        grep -q "RETRO_LOW_EARLYOOM_ARGS=\"-m 4 -s 8\"" "${RETRO_ETC_DIR}/retro.conf"
+    check "retro-ai.conf" "03_modules_setup.sh install_retro_ai" test -s "${RETRO_ETC_DIR}/retro-ai.conf"
+}
+
+# -----------------------------------------------------------------------------
+# 7. Summary
+# -----------------------------------------------------------------------------
+summary() {
+    retro_info "[7/7] summary"
+    printf 'SELFTEST: SUMMARY pass=%d fail=%d warn=%d\n' "${PASS}" "${FAIL}" "${WARN}"
+    if (( FAIL > 0 )); then
+        retro_error "In-chroot self-test FAILED (${FAIL} critical). The ISO build is halted - fix the items marked '-> fix:' above."
+        exit 1
+    fi
+    retro_ok "In-chroot self-test passed (${PASS} checks, ${WARN} warnings)"
+}
+
+main() {
+    retro_info "=== 99_selftest.sh: start ==="
+    test_user
+    test_login_stack
+    test_home
+    test_boot_files
+    test_payload
+    test_tuning
+    summary
+}
+
+main "$@"
+ /usr/share/applications/retro-start.desktop
     done
 
     local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
