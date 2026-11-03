@@ -133,7 +133,212 @@ test_login_stack() {
     check "Retro OS Wayland session descriptor exists" "02_interface_setup.sh install_branding_assets" test -s /usr/share/wayland-sessions/retro-os.desktop
     check "Wayland session wrapper exists and is executable" "install /usr/local/bin/retro-labwc-session" test -x /usr/local/bin/retro-labwc-session
     check "Wayland session wrapper has valid shell syntax" "fix retro-labwc-session" sh -n /usr/local/bin/retro-labwc-session
-    check "Wayland session wrapper starts Labwc" "Exec must end in /usr/bin/labwc" grep -q '^exec /usr/bin/labwc$' /usr/local/bin/retro-labwc-session
+    check "Wayland session wrapper starts Labwc" "Exec must end in /usr/bin/labwc" grep -q '^exec /usr/bin/labwc
+    check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
+    check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
+    check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q '^ConditionKernelCommandLine=boot=live$' /etc/systemd/system/retro-live-credentials.service
+    check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" no_legacy_password "${RETRO_HELPER_DIR}/retro-live-fixup"
+    check "default target = graphical" "systemctl set-default graphical.target" \
+        test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
+             "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/usr/lib/systemd/system/graphical.target"
+    check "display-manager.service -> lightdm" "systemctl enable lightdm.service" bash -c 'readlink /etc/systemd/system/display-manager.service | grep -q lightdm'
+    check "Xwrapper.config" "restore /opt/retro-os/templates/Xwrapper.config" test -s /etc/X11/Xwrapper.config
+
+    for base in /etc/skel "${HOME_DIR}"; do
+        check "${base}/.config/labwc/autostart exists" "re-run 02_interface_setup.sh write_skel_session" test -x "${base}/.config/labwc/autostart"
+        check "${base}/.config/labwc/environment exists" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/.config/labwc/environment"
+    done
+
+    local unit
+    for unit in lightdm retro-live-fixup retro-live-credentials retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
+        check "unit enabled: ${unit}" "systemctl enable ${unit}.service" systemctl is-enabled --quiet "${unit}.service"
+    done
+}
+
+# -----------------------------------------------------------------------------
+# 3. Home / skeleton ownership and Wayland desktop configs
+# -----------------------------------------------------------------------------
+test_home() {
+    retro_info "[3/7] home + Wayland desktop skeleton"
+    check "${HOME_DIR} exists" "98_finalize.sh sync_home_from_skel" test -d "${HOME_DIR}"
+    if [[ -z "$(find "${HOME_DIR}" \( ! -user "${RETRO_USER}" -o ! -group "${RETRO_USER}" \) -print -quit 2>/dev/null)" ]]; then
+        pass "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}"
+    else
+        fail "${HOME_DIR} fully owned by ${RETRO_USER}:${RETRO_USER}" "chown -R ${RETRO_USER}:${RETRO_USER} ${HOME_DIR}"
+    fi
+    if [[ -z "$(find /etc/skel ! -type l -perm /022 -print -quit 2>/dev/null)" ]]; then
+        pass "/etc/skel has no group/other-writable entries"
+    else
+        fail "/etc/skel has no group/other-writable entries" "chmod -R go-w /etc/skel"
+    fi
+    check "/etc/skel owned by root" "chown -R root:root /etc/skel" test "$(stat -c %U /etc/skel)" = root
+
+    local base f
+    for base in /etc/skel "${HOME_DIR}"; do
+        for f in .config/labwc/rc.xml .config/labwc/menu.xml .config/labwc/autostart \
+                 .config/labwc/environment .config/waybar/config .config/waybar/style.css \
+                 .config/foot/foot.ini .config/wofi/style.css; do
+            check "${base}/${f}" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/${f}"
+        done
+        for f in .config/labwc/rc.xml .config/labwc/menu.xml; do
+            check "${base}/${f} is valid XML" "inspect Labwc configuration XML" \
+                python3 -c "import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])" "${base}/${f}"
+        done
+        check "${base}/.config/waybar/config is valid JSON" "fix Waybar JSON config" \
+            python3 -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "${base}/.config/waybar/config"
+        if grep -q 'foot --hold -e bash -lc' "${base}/.config/labwc/menu.xml"; then
+            pass "${base}/Labwc CLI menu entries open in persistent Foot terminals"
+        else
+            fail "${base}/Labwc CLI menu entries open in persistent Foot terminals" "retro-menu-gen --system/--user"
+        fi
+        check "${base}/Waybar launcher opens Wofi" "set custom/launcher on-click=wofi --show drun" \
+            grep -q 'wofi --show drun' "${base}/.config/waybar/config"
+    done
+
+    local wp="/usr/share/backgrounds/retro-os/wallpaper.png"
+    if [[ -s "${wp}" && "$(head -c4 "${wp}" | od -An -tx1 | tr -d ' \n')" == "89504e47" ]]; then
+        pass "wallpaper present and a valid PNG (${wp})"
+    else
+        fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# 4. Kernel / initramfs
+# -----------------------------------------------------------------------------
+test_boot_files() {
+    retro_info "[4/7] kernel + initramfs"
+    local k found=0
+    for k in /boot/vmlinuz-*; do
+        [[ -e "${k}" ]] || continue
+        found=1
+        local ver="${k#/boot/vmlinuz-}" initrd="/boot/initrd.img-${k#/boot/vmlinuz-}"
+        if [[ -s "${k}" ]]; then pass "kernel ${k} non-empty"; else fail "kernel ${k} non-empty" "reinstall linux-image-amd64"; fi
+        if [[ -s "${initrd}" ]]; then
+            pass "initramfs ${initrd} non-empty"
+            
+            # unmkinitramfs വഴി മൈക്രോകോഡും പ്രധാന ആർക്കൈവും പൂർണ്ണമായി പരിശോധിക്കുന്നു
+            local contents=""
+            local tmp_test
+            tmp_test="$(mktemp -d)"
+            if unmkinitramfs "${initrd}" "${tmp_test}" 2>/dev/null; then
+                contents="$(find "${tmp_test}" 2>/dev/null)"
+            else
+                contents="$(lsinitramfs "${initrd}" 2>/dev/null || true)"
+            fi
+            rm -rf "${tmp_test}"
+
+            if grep -q 'scripts/live' <<< "${contents}"; then
+                pass "initramfs ${ver} contains live-boot scripts"
+            else
+                fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
+            fi
+            if grep -Eq 'squashfs|overlay' <<< "${contents}"; then
+                pass "initramfs ${ver} has squashfs/overlay support"
+            else
+                fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
+            fi
+        else
+            fail "initramfs ${initrd} non-empty" "update-initramfs -c -k ${ver}"
+        fi
+    done
+    if (( found == 0 )); then fail "kernel image in /boot" "01_engine_setup.sh install_kernel_and_live failed"; fi
+}
+
+# -----------------------------------------------------------------------------
+# 5. Binaries, scripts, payload
+# -----------------------------------------------------------------------------
+test_payload() {
+    retro_info "[5/7] binaries / scripts / payload"
+    local ghv=""
+    if ghv="$(gh_version)" && dpkg --compare-versions "${ghv}" ge 2.67.0 && gh attestation verify --help >/dev/null 2>&1; then
+        pass "GitHub CLI version supports secure attestations (${ghv})"
+    else
+        ghv="${ghv:-not installed or version unreadable}"
+        fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
+    fi
+    local b
+    for b in labwc waybar foot wofi swaybg mako lightdm gh xwayland pcmanfm nm-applet volumeicon \
+             grim slurp wl-copy nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
+             qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
+        check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
+    done
+    for b in rustscan ffuf httpx naabu; do
+        if command -v "${b}" >/dev/null 2>&1; then
+            pass "modern tool: ${b}"
+        elif [[ "${RETRO_TOOLS_STRICT}" == "1" ]]; then
+            fail "modern tool: ${b}" "retro-fetch-tools ${b}; each release needs valid GitHub attestation and SHA-256"
+        else
+            soft "modern tool missing: ${b}" "run on the live system: sudo ${RETRO_HELPER_DIR}/retro-fetch-tools ${b}"
+        fi
+    done
+    check "grub-btrfs installed" "04_installer_setup.sh install_grub_btrfs (network/GitHub?)" test -x /etc/grub.d/41_snapshots-btrfs
+
+    check "retro CLI present + executable" "overlay/usr/local/bin/retro" test -x "${RETRO_BIN_DIR}/retro"
+    check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
+    check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
+    check "retro_ai.py compiles" "python3 -m py_compile ${RETRO_AI_DIR}/retro_ai.py" python3 -m py_compile "${RETRO_AI_DIR}/retro_ai.py"
+    find "${RETRO_AI_DIR}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+    local s
+    for s in "${RETRO_HELPER_DIR}"/*; do
+        [[ -f "${s}" ]] || continue
+        check "bash -n $(basename "${s}")" "syntax error in ${s}" bash -n "${s}"
+    done
+    check "bash -n retro-hwprofile" "syntax error" bash -n /usr/local/sbin/retro-hwprofile
+    check "policy-rc.d removed" "98_finalize.sh cleanup_chroot (services would be blocked)" test ! -e /usr/sbin/policy-rc.d
+    check "dpkg consistent" "dpkg --configure -a" dpkg_audit_clean
+}
+
+# -----------------------------------------------------------------------------
+# 6. Runtime tuning files
+# -----------------------------------------------------------------------------
+test_tuning() {
+    retro_info "[6/7] adaptive engine files"
+    check "retro.conf" "01_engine_setup.sh install_hw_profile_engine" test -s "${RETRO_ETC_DIR}/retro.conf"
+    check "sysctl baseline (BBR)" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q 'tcp_congestion_control = bbr' /etc/sysctl.d/99-retro-desktop.conf
+    check "sysctl vfs_cache_pressure=50" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q 'vm.vfs_cache_pressure = 50' /etc/sysctl.d/99-retro-desktop.conf
+    check "autogroup sysctl" "restore /etc/sysctl.d/99-retro-desktop.conf" \
+        grep -q 'kernel.sched_autogroup_enabled = 1' /etc/sysctl.d/99-retro-desktop.conf
+    check "tcp_bbr in modules-load" "restore /etc/modules-load.d/retro-net.conf" grep -q '^tcp_bbr' /etc/modules-load.d/retro-net.conf
+    check "hwprofile low-tier zstd/75%" "RETRO_LOW_ZRAM_PCT / RETRO_ZRAM_ALGO in config.env" \
+        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_ZRAM_ALGO=\"zstd\"' ${RETRO_ETC_DIR}/retro.conf"
+    check "low-tier earlyoom -m 4 -s 8" "RETRO_LOW_EARLYOOM_ARGS in config.env" \
+        grep -q 'RETRO_LOW_EARLYOOM_ARGS="-m 4 -s 8"' "${RETRO_ETC_DIR}/retro.conf"
+    check "retro-ai.conf" "03_modules_setup.sh install_retro_ai" test -s "${RETRO_ETC_DIR}/retro-ai.conf"
+}
+
+# -----------------------------------------------------------------------------
+# 7. Summary
+# -----------------------------------------------------------------------------
+summary() {
+    retro_info "[7/7] summary"
+    printf 'SELFTEST: SUMMARY pass=%d fail=%d warn=%d\n' "${PASS}" "${FAIL}" "${WARN}"
+    if (( FAIL > 0 )); then
+        retro_error "In-chroot self-test FAILED (${FAIL} critical). The ISO build is halted - fix the items marked '-> fix:' above."
+        exit 1
+    fi
+    retro_ok "In-chroot self-test passed (${PASS} checks, ${WARN} warnings)"
+}
+
+main() {
+    retro_info "=== 99_selftest.sh: start ==="
+    test_user
+    test_login_stack
+    test_home
+    test_boot_files
+    test_payload
+    test_tuning
+    summary
+}
+
+main "$@"
+ /usr/local/bin/retro-labwc-session
+    check "report-only autologin absent from built image" "autologin may only be created at boot with retro.report=1" test ! -e /etc/lightdm/lightdm.conf.d/50-retro-report-autologin.conf
+    check "live fixup scopes autologin to report mode" "keep autologin behind retro.report=1" grep -A7 -B1 -q 'retro.report=1' "${RETRO_HELPER_DIR}/retro-live-fixup"
     check "live credential helper exists" "02_interface_setup.sh write_live_fixup" test -x "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
