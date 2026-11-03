@@ -34,6 +34,19 @@ in_group() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
 no_legacy_password() { ! grep -Eq 'chpasswd|:retro|--unlock' "$1"; }
 dpkg_audit_clean() { [[ -z "$(dpkg --audit)" ]]; }
 
+udev_goto_targets_valid() {
+    local rule target
+    shopt -s nullglob
+    for rule in /usr/lib/udev/rules.d/*alsa*.rules /lib/udev/rules.d/*alsa*.rules; do
+        [[ -f "${rule}" ]] || continue
+        while IFS= read -r target; do
+            [[ -n "${target}" ]] || continue
+            grep -Fq "LABEL=\"${target}\"" "${rule}" || return 1
+        done < <(sed -n 's/.*GOTO="\\([^"]*\\)".*/\\1/p' "${rule}")
+    done
+    return 0
+}
+
 lightdm_pam_clean() {
     local f pam_dir="${RETRO_SELFTEST_PAM_DIR:-/etc/pam.d}"
     # Keep Debian's package-provided PAM service files intact. In particular,
@@ -260,13 +273,14 @@ test_payload() {
         fail "GitHub CLI version supports secure attestations (${ghv})" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages"
     fi
     local b
-    for b in openbox openbox-session obconf tint2 jgmenu_run lxterminal feh Xorg pkexec lightdm gh pcmanfm nm-applet blueman-applet volumeicon \
+    for b in openbox openbox-session obconf tint2 jgmenu_run lxterminal feh pkexec lightdm gh pcmanfm nm-applet blueman-applet volumeicon \
              nmap tshark aircrack-ng hydra john nikto sqlmap wifite ffuf qrencode earlyoom espeak-ng python3 btop snapper btrfs dm-tool amixer; do
         check "binary: ${b}" "install the providing package (see scripts/01-04)" command -v "${b}"
     done
     check "X11 server binary installed" "install xserver-xorg-core" command -v Xorg
     check "MATE polkit agent installed" "install the mate-polkit package" test -x /usr/libexec/polkit-mate-authentication-agent-1
     check "polkit daemon installed" "install the polkitd package" test -x /usr/lib/polkit-1/polkitd
+    check "ALSA udev GOTO labels are valid" "repair any ALSA udev rule with an unresolved GOTO target" udev_goto_targets_valid
     for b in rustscan ffuf httpx naabu; do
         if command -v "${b}" >/dev/null 2>&1; then
             pass "modern tool: ${b}"
