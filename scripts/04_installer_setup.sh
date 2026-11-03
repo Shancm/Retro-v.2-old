@@ -150,7 +150,7 @@ cat > /etc/lightdm/lightdm.conf <<'EOT'
 minimum-vt=7
 
 [Seat:*]
-user-session=openbox
+user-session=retro-os
 greeter-session=lightdm-gtk-greeter
 allow-guest=false
 EOT
