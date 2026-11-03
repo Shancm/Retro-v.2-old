@@ -68,7 +68,7 @@ EOF
 }
 
 load_profile() {
-    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_COMPOSITOR="labwc"
+    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_DESKTOP="openbox"
     # shellcheck source=/dev/null
     [[ -r "${PROFILE_ENV}" ]] && source "${PROFILE_ENV}"
     return 0
@@ -92,7 +92,7 @@ status_bar() {
     if grep -q '^/dev/zram' /proc/swaps 2>/dev/null; then zr_state="good"; zr_text="${RETRO_ZRAM_PCT:-?}% zstd"; fi
 
     local comp_state="idle" comp_text="not running"
-    if pgrep -x labwc >/dev/null 2>&1; then comp_state="good"; comp_text="Labwc"; fi
+    if pgrep -x openbox >/dev/null 2>&1; then comp_state="good"; comp_text="Openbox"; fi
 
     local tier_state="good"
     [[ "${RETRO_TIER}" == "low" ]] && tier_state="bad"
@@ -124,7 +124,7 @@ usage() {
 ${BOLD}Usage:${RST} retro <command> [options]
 
 ${MINT}Session${RST}
-  term                 open the primary Wayland terminal (Foot)
+  term                 open the primary X11 terminal (LXTerminal)
   mon                  system monitor (btop, falls back to htop)
   fetch                ASCII system summary (OS, kernel, uptime, RAM, CPU)
   profile              show the adaptive hardware profile in effect
@@ -137,7 +137,7 @@ ${MINT}Utilities${RST}
                        serve one file over HTTP and show a QR code for your phone
   ai [shell|doctor|watch|status|say]
                        Retro AI offline companion / health audit / watchdog
-  menu                 regenerate the Labwc menu for your user
+  menu                 regenerate the Openbox menu for your user
 
 ${MINT}Maintenance${RST}
   update [--tools] [--no-apt] [--force]
@@ -182,7 +182,6 @@ user_gui() {   # run a command as the desktop user with the GUI environment
     [[ -d "${runtime}" ]] || return 1
     runuser -u "${u}" -- env \
         XDG_RUNTIME_DIR="${runtime}" \
-        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=${runtime}/bus" \
         DISPLAY="${DISPLAY:-}" \
         XAUTHORITY="${XAUTHORITY:-${home}/.Xauthority}" "$@"
@@ -203,9 +202,9 @@ start_log() {   # <name>
 # term / mon
 # -----------------------------------------------------------------------------
 cmd_term() {
-    [[ -n "${WAYLAND_DISPLAY:-}" || -n "${XDG_RUNTIME_DIR:-}" ]] || die "no Wayland session detected"
-    command -v foot >/dev/null 2>&1 || die "Foot terminal is not installed"
-    exec foot "$@"
+    [[ -n "${DISPLAY:-}" ]] || die "no X11 DISPLAY is active"
+    command -v lxterminal >/dev/null 2>&1 || die "LXTerminal is not installed"
+    exec lxterminal "$@"
 }
 
 cmd_mon() {
@@ -418,7 +417,7 @@ cmd_fetch() {
         "${MINT}CPU${RST}     ${cpu:-unknown} (${cores} cores)"
         "${MINT}RAM${RST}     ${ram_used} MiB / ${ram_total} MiB   ${DIM}swap: ${swap_zram}${RST}"
         "${MINT}Disk${RST}    ${disk}"
-        "${MINT}Tier${RST}    ${RETRO_TIER} ${DIM}(session: ${RETRO_COMPOSITOR})${RST}"
+        "${MINT}Tier${RST}    ${RETRO_TIER} ${DIM}(session: ${RETRO_DESKTOP})${RST}"
         "${MINT}Shell${RST}   ${shell_name}   ${DIM}pkgs: ${pkgs}${RST}"
     )
     local i rows="${#info[@]}"
@@ -675,10 +674,10 @@ cmd_update() {
     if [[ -n "${tu}" ]]; then
         home="$(getent passwd "${tu}" | cut -d: -f6)"
         runuser -u "${tu}" -- "${HELPER_DIR}/retro-menu-gen" --user "${home}" || warn "user menu regeneration failed"
-        if user_gui labwc --reconfigure 2>/dev/null; then
-            ok "Labwc menu reloaded"
+        if user_gui openbox --reconfigure 2>/dev/null; then
+            ok "Openbox menu reloaded"
         else
-            say "Labwc is not reachable (menus apply at next login)"
+            say "Openbox is not reachable (menus apply at next login)"
         fi
     fi
     ok "retro update finished"
@@ -853,7 +852,7 @@ cmd_menu() {
         else
             say "Labwc is not reachable (menus apply at next login)"
         fi
-    elif labwc --reconfigure 2>/dev/null; then
+    elif openbox --reconfigure 2>/dev/null; then
         ok "Labwc menu reloaded"
     else
         say "Labwc is not reachable (menus apply at next login)"
