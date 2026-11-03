@@ -32,7 +32,7 @@ sync_home_from_skel() {
 Type=Application
 Name=Install ${RETRO_OS_NAME}
 Comment=Install ${RETRO_OS_NAME} to this computer
-Exec=sudo -E calamares
+Exec=pkexec calamares
 Icon=system-software-install
 Terminal=false
 Categories=System;
@@ -52,7 +52,7 @@ fix_helper_permissions() {
     chown -R root:root "${RETRO_ROOT}" "${RETRO_AI_DIR}" 2>/dev/null || true
     find "${RETRO_HELPER_DIR}" -type f -exec chmod 0755 {} +
     chmod 0755 "${RETRO_BIN_DIR}/retro" "${RETRO_AI_DIR}/retro_ai.py" 2>/dev/null || true
-    chmod 0750 "${RETRO_HELPER_DIR}/retro-live-fixup"
+    chmod 0750 "${RETRO_HELPER_DIR}/retro-live-fixup" "${RETRO_HELPER_DIR}/retro-live-credentials"
     chmod 0755 /usr/local/sbin/retro-hwprofile
 }
 
