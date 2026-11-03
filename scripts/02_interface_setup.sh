@@ -20,88 +20,60 @@ TEMPLATE_DIR="${RETRO_ROOT}/templates"
 WALLPAPER="/usr/share/backgrounds/retro-os/wallpaper.png"
 
 install_graphical_stack() {
-    retro_info "Preseeding LightDM as the graphical display manager"
+    retro_info "Installing lightweight X11 desktop, Bluetooth, network and audio packages"
     echo "lightdm shared/default-x-display-manager select lightdm" | debconf-set-selections
     echo "libpam-runtime libpam-runtime/override boolean false" | debconf-set-selections || true
-
-    retro_info "Installing Labwc Wayland desktop and Xwayland compatibility"
     retro_apt_install \
-        xserver-xorg xserver-xorg-core xserver-xorg-input-libinput \
-        xserver-xorg-video-all xserver-xorg-video-intel xserver-xorg-video-fbdev xserver-xorg-video-vesa \
-        xwayland \
-        lightdm lightdm-gtk-greeter \
-        labwc waybar foot wofi swaybg mako-notifier \
-        xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
-        wl-clipboard grim slurp \
-        pcmanfm mousepad lxtask lxappearance \
-        network-manager-gnome volumeicon-alsa \
+        xserver-xorg-core xserver-xorg-video-all xserver-xorg-video-vesa \
+        xserver-xorg-video-nouveau xserver-xorg-input-all x11-xserver-utils \
+        lightdm lightdm-gtk-greeter openbox obconf tint2 jgmenu \
+        pcmanfm lxterminal feh xarchiver gvfs gvfs-backends \
+        network-manager-gnome bluetooth bluez bluez-tools blueman \
+        usb-modeswitch usbmuxd ipheth-utils wireless-tools wpasupplicant \
+        firmware-linux-nonfree firmware-realtek firmware-atheros firmware-misc-nonfree \
+        pipewire pipewire-pulse wireplumber pavucontrol volumeicon-alsa alsa-utils \
         pkexec polkitd mate-polkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
-        gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
-        cbatticon blueman \
-        dillo geany geany-plugins vlc ristretto evince galculator xarchiver p7zip-full unrar-free
-
+        mousepad lxtask lxappearance dillo geany geany-plugins \
+        vlc ristretto evince galculator p7zip-full unrar-free
     retro_apt_install_optional \
+        xserver-xorg-video-intel xserver-xorg-video-fbdev \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
-        xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu \
-        kanshi
+        xserver-xorg-video-ati xserver-xorg-video-amdgpu
     if [[ "${RETRO_INSTALL_BROWSER}" == "1" ]]; then
         retro_apt_install_optional firefox-esr
     fi
 }
 
 install_branding_assets() {
-    retro_info "Installing Retro OS Wayland branding"
-    mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/wayland-sessions
-
+    retro_info "Installing Retro OS X11 branding and Openbox session"
+    mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/xsessions /usr/share/applications
     retro_write /usr/share/pixmaps/retro-start.svg 0644 <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <defs>
-    <radialGradient id="g" cx="35%" cy="30%" r="75%">
-      <stop offset="0" stop-color="#7dffd0"/>
-      <stop offset="0.55" stop-color="#00ff9c"/>
-      <stop offset="1" stop-color="#007a4c"/>
-    </radialGradient>
-  </defs>
+  <defs><radialGradient id="g" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7dffd0"/><stop offset=".55" stop-color="#00ff9c"/><stop offset="1" stop-color="#007a4c"/></radialGradient></defs>
   <circle cx="32" cy="32" r="29" fill="#0c0d12" stroke="#00ff9c" stroke-width="2"/>
   <circle cx="32" cy="32" r="24" fill="url(#g)"/>
-  <path d="M23 43V21h10a7 7 0 0 1 0 14h-4l8 8" fill="none" stroke="#0c0d12"
-        stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23 43V21h10a7 7 0 0 1 0 14h-4l8 8" fill="none" stroke="#0c0d12" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 EOF
-
     retro_write /usr/share/applications/retro-start.desktop 0644 <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Retro OS Launcher
-Comment=Open the Retro OS application launcher
-Exec=wofi --show drun
+Name=Retro OS Start
+Comment=Open the Retro OS application menu
+Exec=jgmenu_run
 Icon=/usr/share/pixmaps/retro-start.svg
 Terminal=false
 Categories=Utility;
 EOF
-
-    retro_write /usr/local/bin/retro-labwc-session 0755 <<'EOF'
-#!/bin/sh
-set -eu
-export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=labwc
-export XDG_SESSION_DESKTOP=labwc
-export MOZ_ENABLE_WAYLAND=1
-export QT_QPA_PLATFORM='wayland;xcb'
-export GDK_BACKEND='wayland,x11'
-export SDL_VIDEODRIVER='wayland,x11'
-exec /usr/bin/labwc
-EOF
-
-    retro_write /usr/share/wayland-sessions/retro-os.desktop 0644 <<'EOF'
+    retro_write /usr/share/xsessions/retro-os.desktop 0644 <<'EOF'
 [Desktop Entry]
-Name=Retro OS (Labwc)
-Comment=Lightweight Retro OS Wayland desktop
-Exec=/usr/local/bin/retro-labwc-session
+Name=Retro OS (Openbox)
+Comment=Lightweight Retro OS X11 desktop
+Exec=openbox-session
 Type=Application
-DesktopNames=labwc;wlroots;
+DesktopNames=Openbox;
 EOF
 }
 
@@ -157,27 +129,26 @@ install_login_stack() {
 }
 
 write_session_start() {
-    retro_info "Writing Wayland session autostart helper"
+    retro_info "Writing X11 session startup helper"
     retro_write "${RETRO_HELPER_DIR}/retro-session-start" 0755 <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}"
 mkdir -p "${CACHE_DIR}"
 exec >>"${CACHE_DIR}/retro-session.log" 2>&1
-echo "=== Retro OS Wayland session $(date '+%F %T') ==="
-
-start_once() {
-    local process="$1"
-    shift
-    if pgrep -u "$(id -u)" -x "${process}" >/dev/null 2>&1; then
-        return 0
-    fi
-    command -v "$1" >/dev/null 2>&1 || {
-        echo "skip ${process}: executable $1 not found"
-        return 0
-    }
-    "$@" &
+echo "=== Retro OS X11 session $(date '+%F %T') ==="
+pcmanfm --desktop &
+tint2 &
+nm-applet &
+blueman-applet &
+volumeicon &
+if [[ -x /usr/libexec/polkit-mate-authentication-agent-1 ]]; then
+    /usr/libexec/polkit-mate-authentication-agent-1 &
+fi
+if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares >/dev/null 2>&1; then
+    pkexec calamares &
+fi
+EOF
 }
 
 start_once swaybg swaybg -i /usr/share/backgrounds/retro-os/wallpaper.png -m fill
@@ -254,7 +225,7 @@ sync_file /opt/retro-os/templates/Xwrapper.config /etc/X11/Xwrapper.config 0644
 home="/home/${USER_NAME}"
 if [[ -d "${home}" ]]; then
     chown -R "${USER_NAME}:${USER_NAME}" "${home}"
-    [[ -d "${home}/.config/labwc" ]] || cp -a /etc/skel/.config/labwc "${home}/.config/"
+    [[ -d "${home}/.config/openbox" ]] || cp -a /etc/skel/.config/openbox "${home}/.config/"
 fi
 
 chmod 1777 /tmp /var/tmp 2>/dev/null || true
