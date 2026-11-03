@@ -35,7 +35,7 @@ install_graphical_stack() {
         wl-clipboard grim slurp \
         pcmanfm mousepad lxtask lxappearance \
         network-manager-gnome volumeicon-alsa \
-        policykit-1 policykit-1-gnome udisks2 \
+        policykit-1 mate-polkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
@@ -194,7 +194,7 @@ start_once swaybg swaybg -i /usr/share/backgrounds/retro-os/wallpaper.png -m fil
 sleep 0.3
 start_once waybar waybar
 start_once mako mako
-start_once polkit-gnome-authentication-agent-1 /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+start_once polkit-mate-authentication-agent-1 /usr/lib/mate-polkit/polkit-mate-authentication-agent-1
 start_once nm-applet nm-applet --indicator
 start_once volumeicon volumeicon
 start_once blueman-applet blueman-applet
