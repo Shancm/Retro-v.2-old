@@ -322,6 +322,11 @@ main() {
     done
     [[ ${#wanted[@]} -gt 0 ]] || wanted=("${ALL_TOOLS[@]}")
 
+    case "${STRICT}" in
+        0|1) ;;
+        *) warn "RETRO_TOOLS_STRICT must be 0 or 1 (got: ${STRICT})"; exit 2 ;;
+    esac
+
     local t failed=0 rc
     for t in "${wanted[@]}"; do
         if stage_tool "${t}"; then
@@ -340,6 +345,10 @@ main() {
     done
 
     if (( failed > 0 )); then
+        if [[ "${STRICT}" == "1" ]]; then
+            warn "${failed} requested tool(s) were unavailable or could not be authenticated; strict mode refuses to continue"
+            exit 1
+        fi
         warn "${failed} optional tool(s) were unavailable or could not be authenticated; continuing OS build without them"
     fi
     exit 0
