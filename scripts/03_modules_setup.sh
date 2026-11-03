@@ -174,7 +174,7 @@ verify_checksum() {   # file asset listing repo -> verified | unverified | MISMA
     if ! gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
         echo "unverified"; return 0
     fi
-    sums_url="$(tail -n +2 "${listing}" | awk -F'\\t' 'tolower($1) ~ /(checksums?\\.txt|sha256sums?(\\.txt)?)$/ {print $2; exit}')"
+    sums_url="$(tail -n +2 "${listing}" | awk -F'\t' 'tolower($1) ~ /(checksums?\.txt|sha256sums?(\.txt)?)$/ {print $2; exit}')"
     if [[ -z "${sums_url}" ]]; then echo "unverified"; return 0; fi
     sums="$(curl_dl "${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
     want="$(awk -v a="${asset}" '$2 == a || $2 == "*" a {print $1; exit}' <<< "${sums}")"
