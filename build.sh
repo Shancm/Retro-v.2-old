@@ -219,7 +219,7 @@ preflight_host() {
 preflight_binaries() {
     retro_info "[preflight 2/5] host binaries and boot assets"
     local missing=0 b
-    for b in debootstrap mksquashfs xorriso isohybrid mcopy mmd mkfs.vfat grub-mkstandalone chroot sha256sum truncate findmnt; do
+    for b in debootstrap mksquashfs xorriso mcopy mmd mkfs.vfat grub-mkstandalone chroot sha256sum truncate findmnt; do
         if command -v "${b}" >/dev/null 2>&1; then
             retro_ok "found ${b}"
         else
@@ -411,10 +411,25 @@ preflight() {
 # -----------------------------------------------------------------------------
 # Stamps (idempotent / resumable stages)
 # -----------------------------------------------------------------------------
+overlay_hash() {
+    [[ -d "${OVERLAY_DIR}" ]] || retro_die "overlay directory missing: ${OVERLAY_DIR}"
+    {
+        ( cd "${OVERLAY_DIR}" && find . -printf '%P\t%y\t%m\t%l\0' | LC_ALL=C sort -z )
+        ( cd "${OVERLAY_DIR}" && find . -type f -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
+            printf '%s\0' "${f}"
+            sha256sum -- "${f}" | awk '{print $1}'
+        done )
+    } | sha256sum | awk '{print $1}'
+}
+
 stage_hash() {   # <script|string>
     if [[ -f "${SCRIPTS_DIR}/$1" ]]; then
-        cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1" | sha256sum | awk '{print $1}'
+        {
+            cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1"
+            printf '\noverlay:%s\n' "$(overlay_hash)"
+        } | sha256sum | awk '{print $1}'
     else
+        # Bootstrap cache depends only on explicit Debian bootstrap inputs.
         printf '%s' "$1" | sha256sum | awk '{print $1}'
     fi
 }
@@ -754,11 +769,12 @@ configfile /boot/grub/grub.cfg
 EOF
 
     grub-mkstandalone --format=x86_64-efi --output="${work}/bootx64.efi" \
+        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file" \
         --locales="" --fonts="" "boot/grub/grub.cfg=${work}/embedded.cfg" 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${work}/bootx64.efi" ]] || retro_die "grub-mkstandalone produced no bootx64.efi"
 
-    efi_size_mb=$(( ( $(stat -c %s "${work}/bootx64.efi") / 1048576 ) + 10 ))
-    (( efi_size_mb >= 16 )) || efi_size_mb=16
+    efi_size_mb=$(( ( $(stat -c %s "${work}/bootx64.efi") + 1048575 ) / 1048576 + 10 ))
+    (( efi_size_mb >= 64 )) || efi_size_mb=64
 
     local img="${IMAGE_DIR}/boot/grub/efi.img"
     rm -f "${img}"
@@ -782,6 +798,10 @@ iso_has_gpt() {   # GPT header lives at LBA 1
     [[ "$(dd if="$1" bs=512 skip=1 count=1 2>/dev/null | head -c8)" == "EFI PART" ]]
 }
 
+iso_has_mbr_signature() {
+    [[ "$(dd if="$1" bs=1 skip=510 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "55aa" ]]
+}
+
 iso_boot_entries_ok() {
     local rep
     rep="$(xorriso -indev "$1" -report_el_torito plain 2>&1 || true)"
@@ -790,9 +810,10 @@ iso_boot_entries_ok() {
 
 build_iso() {
     mkdir -p "${OUT_DIR}"
-    local iso="${OUT_DIR}/${ISO_FILENAME}"
-    rm -f "${iso}" "${iso}.sha256"
-    retro_info "Packing hybrid ISO with xorriso -> ${iso}"
+    local final_iso="${OUT_DIR}/${ISO_FILENAME}"
+    local partial="${final_iso}.partial"
+    rm -f "${partial}" "${final_iso}" "${final_iso}.sha256"
+    retro_info "Packing hybrid ISO with xorriso -> ${partial}"
 
     xorriso -as mkisofs \
         -iso-level 3 -full-iso9660-filenames -joliet -joliet-long -rational-rock \
@@ -801,33 +822,14 @@ build_iso() {
         -no-emul-boot -boot-load-size 4 -boot-info-table \
         -isohybrid-mbr "${ISOHDPFX}" \
         -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat \
-        -output "${iso}" "${IMAGE_DIR}" 2>&1 | tee -a "${RETRO_LOG_FILE}"
+        -output "${partial}" "${IMAGE_DIR}" 2>&1 | tee -a "${RETRO_LOG_FILE}"
 
-    [[ -s "${iso}" ]] || retro_die "xorriso produced no ISO"
-    iso_boot_entries_ok "${iso}" || retro_die "ISO is missing a BIOS or UEFI El Torito entry (xorriso report below)"
-    iso_has_gpt "${iso}" || retro_warn "no GPT header found in the ISO - USB booting on UEFI may require a plain-ISO (CD/VM) boot"
-    retro_ok "xorriso ISO ok: BIOS + UEFI El Torito entries present"
-}
-
-post_isohybrid() {
-    local iso="${OUT_DIR}/${ISO_FILENAME}" tmp
-    if ! command -v isohybrid >/dev/null 2>&1; then
-        retro_warn "isohybrid not installed - keeping the xorriso hybrid image as is"
-        return 0
-    fi
-    tmp="${iso}.isohybrid.tmp"
-    cp -f "${iso}" "${tmp}"
-    retro_info "Post-processing with: isohybrid --uefi (guarded: result is validated, original kept on any doubt)"
-    if isohybrid --uefi "${tmp}" >>"${RETRO_LOG_FILE}" 2>&1 \
-       && [[ "$(dd if="${tmp}" bs=1 skip=510 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "55aa" ]] \
-       && iso_boot_entries_ok "${tmp}" \
-       && iso_has_gpt "${tmp}"; then
-        mv -f "${tmp}" "${iso}"
-        retro_ok "isohybrid --uefi applied and validated (MBR 55AA, GPT, BIOS+UEFI entries intact)"
-    else
-        rm -f "${tmp}"
-        retro_warn "isohybrid --uefi would have damaged the boot structures - kept the xorriso original"
-    fi
+    [[ -s "${partial}" ]] || retro_die "xorriso produced no partial ISO"
+    iso_has_mbr_signature "${partial}" || retro_die "ISO is missing the MBR 0x55AA signature"
+    iso_has_gpt "${partial}" || retro_die "ISO is missing its GPT header at LBA 1"
+    iso_boot_entries_ok "${partial}" || retro_die "ISO is missing a BIOS or UEFI El Torito entry"
+    mv -f "${partial}" "${final_iso}"
+    retro_ok "xorriso ISO validated: MBR 55AA + GPT + BIOS/UEFI El Torito entries"
 }
 
 write_checksum() {
@@ -882,7 +884,6 @@ main() {
     build_efi_images
     write_disk_info
     build_iso
-    post_isohybrid
     write_checksum
     print_summary
 }
