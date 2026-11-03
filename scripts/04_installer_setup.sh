@@ -157,9 +157,6 @@ user-session=openbox
 greeter-session=lightdm-gtk-greeter
 allow-guest=false
 EOT
-if [[ -n "${new_user}" ]]; then
-    printf '[Seat:*]\nautologin-user=\n' > /etc/lightdm/lightdm.conf.d/60-retro-installed.conf
-fi
 
 # 3. Live-only units / packages
 systemctl disable retro-live-fixup.service retro-live-credentials.service retro-boot-report.service >/dev/null 2>&1 || true
