@@ -847,7 +847,13 @@ cmd_profile() {
 cmd_menu() {
     [[ -x "${HELPER_DIR}/retro-menu-gen" ]] || die "retro-menu-gen missing"
     "${HELPER_DIR}/retro-menu-gen" --user "${HOME}"
-    if user_gui labwc --reconfigure 2>/dev/null; then
+    if [[ "${EUID}" -eq 0 ]]; then
+        if user_gui labwc --reconfigure 2>/dev/null; then
+            ok "Labwc menu reloaded"
+        else
+            say "Labwc is not reachable (menus apply at next login)"
+        fi
+    elif labwc --reconfigure 2>/dev/null; then
         ok "Labwc menu reloaded"
     else
         say "Labwc is not reachable (menus apply at next login)"
