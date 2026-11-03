@@ -27,11 +27,11 @@ install_classic_tools() {
 
     retro_info "Installing classic auditing tools (CLI + GUI)"
     retro_apt_install \
-        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite ffuf \
+        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite \
         tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
 
-    # John the Ripper CLI is mandatory; optional GUIs remain non-blocking.
-    retro_apt_install_optional john-data johnny
+    # John the Ripper CLI is mandatory; optional GUIs and ffuf may use upstream binaries.
+    retro_apt_install_optional john-data johnny ffuf
 
     # Hydra GUI (XHydra) & Nmap GUI (NmapSI4) & Gufw Firewall
     retro_apt_install_optional xhydra nmapsi4 gufw etherape
@@ -359,11 +359,16 @@ EOF
 }
 
 stage_modern_tools() {
-    retro_info "Staging optional Go/Rust tools (RustScan, ffuf, httpx, naabu)"
-    # The fetcher exits 0 when optional tools are unavailable/unverified, but
-    # exits non-zero on a proven SHA-256 mismatch. Do not mask that security failure.
-    if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" --all; then
-        retro_die "Modern tool integrity verification failed (SHA-256 mismatch); refusing to continue the build"
+    retro_info "Staging required upstream RustScan, ProjectDiscovery httpx and Naabu binaries"
+    if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" rustscan httpx naabu --strict; then
+        retro_die "Required RustScan/httpx/Naabu binaries could not be authenticated and installed"
+    fi
+    if ! command -v ffuf >/dev/null 2>&1; then
+        retro_info "ffuf is not available from APT; installing the official ffuf Linux amd64 release"
+        "${RETRO_HELPER_DIR}/retro-fetch-tools" ffuf --strict \
+            || retro_die "ffuf is missing and the official upstream binary could not be verified"
+    else
+        retro_ok "ffuf provided by the Debian APT package"
     fi
     cat "${RETRO_ETC_DIR}/modern-tools.manifest" 2>/dev/null || true
 }
