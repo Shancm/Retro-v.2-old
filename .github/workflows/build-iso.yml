@@ -7,9 +7,9 @@ name: Build and test Retro OS v2.0
       debian_suite:
         description: Debian suite to build against
         required: false
-        default: bookworm
+        default: trixie
         type: choice
-        options: [bookworm, trixie]
+        options: [trixie]
   push:
     paths:
       - "build.sh"
