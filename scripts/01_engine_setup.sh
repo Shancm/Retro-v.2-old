@@ -185,7 +185,7 @@ configure_locale_time() {
     local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
     [[ -f "${zoneinfo}" ]] || retro_die "Configured timezone does not exist: ${RETRO_TIMEZONE}"
     ln -snf "${zoneinfo}" /etc/localtime
-    printf '%s\\n' "${RETRO_TIMEZONE}" > /etc/timezone
+    printf '%s\n' "\${RETRO_TIMEZONE}" > /etc/timezone
     systemctl enable systemd-timesyncd.service
     systemctl enable bluetooth.service || true
 
