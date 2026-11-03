@@ -182,7 +182,7 @@ test_home() {
     local base f
     for base in /etc/skel "${HOME_DIR}"; do
         for f in .config/labwc/rc.xml .config/labwc/menu.xml .config/labwc/autostart \
-                 .config/labwc/environment .config/waybar/config .config/waybar/style.css \
+                 .config/labwc/environment .config/labwc/themerc-override .config/waybar/config .config/waybar/style.css \
                  .config/foot/foot.ini .config/wofi/style.css; do
             check "${base}/${f}" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/${f}"
         done
