@@ -464,9 +464,9 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
         -m "${ram}M"
         -smp "${smp}"
         -vga std
-        -audiodev none,id=audio0
-        -device intel-hda
-        -device hda-duplex,audiodev=audio0
+        "-audiodev" "none,id=audio0"
+        "-device" "intel-hda"
+        "-device" "hda-duplex,audiodev=audio0"
         -display none
         -serial stdio
         -monitor "unix:${sock},server,nowait"
