@@ -237,7 +237,7 @@ test_boot_files() {
 test_payload() {
     retro_info "[5/7] binaries / scripts / payload"
     check "GitHub CLI version supports secure attestations" "install GitHub CLI 2.67.0 or newer from cli.github.com/packages" \
-        bash -c 'v="$(gh version 2>/dev/null | awk "NR == 1 {print \\$3}")" && dpkg --compare-versions "$v" ge 2.67.0'
+        bash -c 'v="$(gh version 2>/dev/null | cut -d" " -f3)" && dpkg --compare-versions "$v" ge 2.67.0'
     local b
     for b in openbox openbox-session tint2 pcmanfm picom xfce4-terminal jgmenu_run lightdm gh \
              nm-applet volumeicon nmap tshark aircrack-ng hydra john nikto sqlmap wifite \
