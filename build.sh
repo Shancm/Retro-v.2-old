@@ -414,9 +414,9 @@ preflight() {
 overlay_hash() {
     [[ -d "${OVERLAY_DIR}" ]] || retro_die "overlay directory missing: ${OVERLAY_DIR}"
     {
-        ( cd "${OVERLAY_DIR}" && find . -printf '%P\\0%y\\0%m\\0%l\\0' | LC_ALL=C sort -z )
+        ( cd "${OVERLAY_DIR}" && find . -printf '%P\0%y\0%m\0%l\0' | LC_ALL=C sort -z )
         ( cd "${OVERLAY_DIR}" && find . -type f -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
-            printf '%s\\0' "${f}"
+            printf '%s\0' "${f}"
             sha256sum -- "${f}" | awk '{print $1}'
         done )
     } | sha256sum | awk '{print $1}'
@@ -426,7 +426,7 @@ stage_hash() {   # <script|string>
     if [[ -f "${SCRIPTS_DIR}/$1" ]]; then
         {
             cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1"
-            printf '\\noverlay:%s\\n' "$(overlay_hash)"
+            printf '\noverlay:%s\n' "$(overlay_hash)"
         } | sha256sum | awk '{print $1}'
     else
         # Bootstrap cache depends only on explicit Debian bootstrap inputs.
@@ -799,7 +799,7 @@ iso_has_gpt() {   # GPT header lives at LBA 1
 }
 
 iso_has_mbr_signature() {
-    [[ "$(dd if="$1" bs=1 skip=510 count=2 2>/dev/null | od -An -tx1 | tr -d ' \\n')" == "55aa" ]]
+    [[ "$(dd if="$1" bs=1 skip=510 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "55aa" ]]
 }
 
 iso_boot_entries_ok() {
