@@ -195,8 +195,9 @@ test_home() {
             grep -q "wofi --show drun" "${base}/.config/waybar/config"
     done
 
-    local wp="/usr/share/backgrounds/retro-os/wallpaper.png"
-    if [[ -s "${wp}" && "$(head -c4 "${wp}" | od -An -tx1 | tr -d ' \n')" == "89504e47" ]]; then
+    local wp="/usr/share/backgrounds/retro-os/wallpaper.png" png_magic
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1 | tr -d '[:space:]')"
+    if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]]; then
         pass "wallpaper present and a valid PNG (${wp})"
     else
         fail "wallpaper present and a valid PNG (${wp})" "add overlay/usr/share/backgrounds/retro-os/wallpaper.png (build.sh normally seeds a fallback)"
