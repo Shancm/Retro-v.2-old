@@ -230,12 +230,12 @@ test_boot_files() {
             fi
             rm -rf "${tmp_test}"
 
-            if grep -q 'scripts/live' <<< "${contents}"; then
+            if grep -q "scripts/live" <<< "${contents}"; then
                 pass "initramfs ${ver} contains live-boot scripts"
             else
                 fail "initramfs ${ver} contains live-boot scripts" "update-initramfs -u -k all AFTER installing live-boot"
             fi
-            if grep -Eq 'squashfs|overlay' <<< "${contents}"; then
+            if grep -Eq "squashfs|overlay" <<< "${contents}"; then
                 pass "initramfs ${ver} has squashfs/overlay support"
             else
                 fail "initramfs ${ver} has squashfs/overlay support" "set MODULES=most in /etc/initramfs-tools/conf.d/retro.conf"
