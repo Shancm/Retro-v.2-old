@@ -95,6 +95,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Retro CLI update functional tests
         run: bash tests/test_retro_update.sh
+      - name: Self-test helper regression tests
+        run: bash tests/test_selftest_helpers.sh
 
   build:
     name: Build hybrid BIOS/UEFI ISO
