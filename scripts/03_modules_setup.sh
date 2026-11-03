@@ -159,8 +159,52 @@ pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
     return 1
 }
 
-verify_checksum() {   # file asset listing repo -> verified | verified-attested | unverified | MISMATCH
-    local file="${1}" asset="${2}" listing="${3}" repo="${4}"
+verify_signed_tag() {
+    local repo="${1}" tag="${2}" work ref_json tag_json commit_json ref_type sha rc
+    local -a hdr
+    work="$(mktemp -d)"
+    ref_json="${work}/ref.json"
+    tag_json="${work}/tag.json"
+    commit_json="${work}/commit.json"
+    hdr=(-H "Accept: application/vnd.github+json" -H "User-Agent: retro-os-fetch-tools")
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then hdr+=(-H "Authorization: Bearer ${GITHUB_TOKEN}"); fi
+
+    if ! curl_dl "${hdr[@]}" -o "${ref_json}" "https://api.github.com/repos/${repo}/git/ref/tags/${tag}"; then
+        rm -rf "${work}"; return 1
+    fi
+    read -r ref_type sha < <(python3 - "${ref_json}" <<'PY'
+import json, sys
+d=json.load(open(sys.argv[1]))
+print(d.get("object", {}).get("type", ""), d.get("object", {}).get("sha", ""))
+PY
+)
+    if [[ "${ref_type}" == "tag" && -n "${sha}" ]]; then
+        if ! curl_dl "${hdr[@]}" -o "${tag_json}" "https://api.github.com/repos/${repo}/git/tags/${sha}"; then
+            rm -rf "${work}"; return 1
+        fi
+        read -r ref_type sha < <(python3 - "${tag_json}" <<'PY'
+import json, sys
+d=json.load(open(sys.argv[1]))
+print(d.get("object", {}).get("type", ""), d.get("object", {}).get("sha", ""))
+PY
+)
+    fi
+    if [[ "${ref_type}" != "commit" || -z "${sha}" ]] ||
+       ! curl_dl "${hdr[@]}" -o "${commit_json}" "https://api.github.com/repos/${repo}/commits/${sha}"; then
+        rm -rf "${work}"; return 1
+    fi
+    python3 - "${commit_json}" <<'PY'
+import json, sys
+d=json.load(open(sys.argv[1]))
+raise SystemExit(0 if d.get("commit", {}).get("verification", {}).get("verified") is True else 1)
+PY
+    rc=$?
+    rm -rf "${work}"
+    return "${rc}"
+}
+
+verify_checksum() {   # file asset listing repo tag -> verified | verified-attested | verified-tag-signature | unverified | MISMATCH
+    local file="${1}" asset="${2}" listing="${3}" repo="${4}" tag="${5}"
     local sums_url sums want got gh_version attested=0
     if command -v gh >/dev/null 2>&1; then
         gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print ${3}}')"
@@ -169,8 +213,6 @@ verify_checksum() {   # file asset listing repo -> verified | verified-attested 
             attested=1
         fi
     fi
-    # Prefer GitHub artifact attestations; otherwise accept the official
-    # release SHA-256 manifest. Any published checksum mismatch is fatal.
     sums_url="$(tail -n +2 "${listing}" | awk -F'\t' '
         tolower(${1}) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
             print ${2}; exit
@@ -197,7 +239,15 @@ for line in sys.stdin:
             fi
         fi
     fi
-    if (( attested )); then echo "verified-attested"; else echo "unverified"; fi
+    if (( attested )); then echo "verified-attested"; return 0; fi
+    # RustScan's official releases do not publish a checksum manifest or
+    # artifact attestation. Require GitHub's API to report its release tag's
+    # commit signature as valid before trusting the HTTPS release asset.
+    if [[ "${repo}" == "bee-san/RustScan" ]] && verify_signed_tag "${repo}" "${tag}"; then
+        echo "verified-tag-signature"
+    else
+        echo "unverified"
+    fi
 }
 
 is_elf() {
@@ -279,9 +329,9 @@ stage_tool() {
         rm -rf "${work}"; return 1
     fi
 
-    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}")"
+    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}" "${tag}")"
     case "${status}" in
-        verified|verified-attested)
+        verified|verified-attested|verified-tag-signature)
             ;;
         MISMATCH)
             warn "${name}: SHA-256 MISMATCH; refusing this release as potentially compromised"
