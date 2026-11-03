@@ -223,7 +223,7 @@ cmd_boost() {
     if [[ -n "${desktop_user}" ]]; then
         desktop_home="$(getent passwd "${desktop_user}" | cut -d: -f6)"
         install -d -o "${desktop_user}" -g "${desktop_user}" "${desktop_home}/.config/retro" "${desktop_home}/.config/tint2"
-        printf 'off\\n' > "${desktop_home}/.config/retro/compositor"
+        printf 'off\n' > "${desktop_home}/.config/retro/compositor"
         chown "${desktop_user}:${desktop_user}" "${desktop_home}/.config/retro/compositor"
         chmod 0600 "${desktop_home}/.config/retro/compositor"
         tint_cfg="${desktop_home}/.config/tint2/tint2rc"
@@ -839,11 +839,11 @@ EOF
     fi
 
     mkdir -p /run/retro-os
-    printf 'requested=%s nft_table=%s links_down=%s lock_requested=%s\\n' \
+    printf 'requested=%s nft_table=%s links_down=%s lock_requested=%s\n' \
         "$(date -u +%FT%TZ)" "$([[ "${nft_ok}" == 1 ]] && echo yes || echo no)" \
         "$([[ "${links_ok}" == 1 ]] && echo yes || echo no)" \
         "$([[ "${lock_ok}" == 1 ]] && echo yes || echo no)" > /run/retro-os/panic.state
-    printf 'PANIC state: nft_table=%s links_down=%s interfaces=%d lock_requested=%s\\n' \
+    printf 'PANIC state: nft_table=%s links_down=%s interfaces=%d lock_requested=%s\n' \
         "$([[ "${nft_ok}" == 1 ]] && echo confirmed || echo NOT_CONFIRMED)" \
         "$([[ "${links_ok}" == 1 ]] && echo confirmed || echo NOT_CONFIRMED)" \
         "${#interfaces[@]}" "$([[ "${lock_ok}" == 1 ]] && echo yes || echo no)"
