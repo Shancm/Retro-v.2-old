@@ -206,15 +206,15 @@ verify_checksum() {   # file asset listing repo tag -> verified | verified-attes
     local file="${1}" asset="${2}" listing="${3}" repo="${4}" tag="${5}"
     local sums_url sums want got gh_version attested=0
     if command -v gh >/dev/null 2>&1; then
-        gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print ${3}}')"
+        gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
         if [[ -n "${gh_version}" ]] && dpkg --compare-versions "${gh_version}" ge 2.67.0 &&
            gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
             attested=1
         fi
     fi
     sums_url="$(tail -n +2 "${listing}" | awk -F'\t' '
-        tolower(${1}) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
-            print ${2}; exit
+        tolower($1) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
+            print $2; exit
         }')"
     if [[ -n "${sums_url}" ]]; then
         sums="$(curl_dl "${sums_url}" 2>/dev/null)" || sums=""
@@ -231,7 +231,7 @@ for line in sys.stdin:
   print(m.group(2).lower()); break
 ' "${asset}")"
             if [[ -n "${want}" ]]; then
-                got="$(sha256sum "${file}" | awk '{print ${1}}')"
+                got="$(sha256sum "${file}" | awk '{print $1}')"
                 if [[ "${want}" != "${got}" ]]; then echo "MISMATCH"; return 0; fi
                 if (( attested )); then echo "verified-attested"; else echo "verified"; fi
                 return 0
@@ -395,7 +395,8 @@ main() {
     done
 
     if (( failed > 0 )); then
-        warn "${failed} optional tool(s) were unavailable or could not be authenticated; continuing OS build without them"
+        warn "${failed} requested tool(s) were unavailable or could not be authenticated"
+        if (( STRICT == 1 )); then exit 1; fi
     fi
     exit 0
 }
