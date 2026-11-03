@@ -454,7 +454,9 @@ update_scripts() {
         [[ "${want}" == "${got}" ]] || { warn "SHA-256 mismatch - refusing to apply update"; rm -rf "${tmp}"; return 1; }
         ok "SHA-256 verified"
     else
-        warn "no .sha256 published next to the tarball - integrity not verified"
+        warn "no .sha256 published next to the tarball - refusing an unauthenticated update"
+        rm -rf "${tmp}"
+        return 1
     fi
 
     if tar -tzf "${tmp}/pkg.tar.gz" | grep -qE '(^/|(^|/)\.\.(/|$))'; then
