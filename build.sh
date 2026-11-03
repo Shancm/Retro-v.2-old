@@ -438,7 +438,7 @@ finalized_hash() {
     {
         cat "${SELF_DIR}/config.env"
         cat "${SCRIPTS_DIR}/98_finalize.sh" "${SCRIPTS_DIR}/99_selftest.sh"
-        printf '\\noverlay:%s\\n' "$(overlay_hash)"
+        printf '\noverlay:%s\n' "$(overlay_hash)"
     } | sha256sum | awk '{print $1}'
 }
 
