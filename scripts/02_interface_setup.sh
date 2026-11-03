@@ -354,12 +354,13 @@ declare -A CAT_ITEMS=()
 die() { echo "retro-menu-gen: $*" >&2; exit 1; }
 have() { [[ -n "${RETRO_MENU_ASSUME_ALL:-}" ]] && return 0; command -v "$1" >/dev/null 2>&1; }
 xml_escape() {
-    local s="$1"
-    s="${s//&/&amp;}"
-    s="${s//</&lt;}"
-    s="${s//>/&gt;}"
-    s="${s//\"/&quot;}"
-    printf '%s' "${s}"
+    # Use sed replacement escaping: Bash parameter-substitution replacement
+    # treats '&' specially and can silently generate malformed XML.
+    printf '%s' "$1" | sed \
+        -e 's/&/\\&amp;/g' \
+        -e 's/</\\&lt;/g' \
+        -e 's/>/\\&gt;/g' \
+        -e 's/"/\\&quot;/g'
 }
 load_entries() {
     local f line cat label bin args icon mtype
