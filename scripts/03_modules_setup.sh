@@ -451,17 +451,13 @@ mark FAILED_UNITS "${failed}"
 if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/RETRO_DETAIL: failed-unit /'; fi
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
-mark XORG_RUNNING "$(yn pgrep -x Xorg)"
+mark LABWC_RUNNING "$(yn pgrep -u retro -x labwc)"
+mark WAYBAR_RUNNING "$(yn pgrep -u retro -x waybar)"
+mark WAYLAND_SOCKET "$(yn test -S /run/user/1000/wayland-0)"
 mark LIGHTDM_GREETER "$(yn pgrep -f lightdm-gtk-greeter)"
-for p in openbox tint2 pcmanfm nm-applet volumeicon; do
+for p in pcmanfm nm-applet volumeicon; do
     mark "PROC_${p//-/_}" "$(yn pgrep -u retro -x "${p}")"
 done
-mark PROC_picom "$(yn pgrep -u retro -x picom)"
-case "${RETRO_PICOM:-}" in
-    on)  mark PICOM_POLICY "expected-running" ;;
-    off) mark PICOM_POLICY "expected-stopped" ;;
-    *)   mark PICOM_POLICY "unknown" ;;
-esac
 
 loop=0
 for f in /var/log/lightdm/lightdm.log; do
@@ -473,18 +469,6 @@ for f in /var/log/lightdm/lightdm.log; do
     fi
 done
 mark LOGIN_LOOP_SUSPECT "${loop}"
-
-xlog=""
-for f in /var/log/Xorg.0.log "/home/retro/.local/share/xorg/Xorg.0.log"; do
-    [[ -r "${f}" ]] && { xlog="${f}"; break; }
-done
-if [[ -n "${xlog}" ]]; then
-    ee="$(grep -c '(EE)' "${xlog}" 2>/dev/null || true)"
-    mark XORG_ERRORS "${ee:-0}"
-    grep '(EE)' "${xlog}" 2>/dev/null | grep -v 'Failed to load module' | head -n 8 | sed 's/^/RETRO_DETAIL: xorg /'
-else
-    mark XORG_ERRORS "no-log"
-fi
 
 mark WALLPAPER "$([[ -s /usr/share/backgrounds/retro-os/wallpaper.png ]] && echo yes || echo no)"
 mark RETRO_CLI "$(yn retro --version)"
