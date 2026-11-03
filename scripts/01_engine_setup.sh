@@ -76,7 +76,7 @@ install_base_system() {
     retro_apt_install \
         systemd systemd-sysv udev dbus dbus-user-session libpam-systemd \
         sudo locales tzdata console-setup keyboard-configuration kmod \
-        ca-certificates gnupg curl wget git make \
+        ca-certificates gnupg curl wget git gh make \
         procps psmisc lsof file less nano bash-completion man-db \
         htop btop \
         iproute2 iputils-ping iw rfkill ethtool net-tools \
