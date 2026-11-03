@@ -228,10 +228,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [[ "${{ matrix.firmware }}" == "bios" ]]; then
-            ./test_iso.sh --bios --low --report --no-kvm \
+            bash ./test_iso.sh --bios --low --report --no-kvm \
               --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           else
-            ./test_iso.sh --uefi --low --report --no-kvm \
+            bash ./test_iso.sh --uefi --low --report --no-kvm \
               --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           fi
       - name: Upload firmware test logs
