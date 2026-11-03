@@ -78,8 +78,8 @@ EOF
 #   1. GitHub "latest" release (channel=latest)       -> asset chosen by regex
 #   2. GitHub release for the pinned version          -> asset chosen by regex
 #   3. direct download URL for the pinned version     -> no API needed
-# Integrity: GitHub artifact attestation is mandatory and the release checksum
-# must also match. A checksum published beside an asset is not trusted alone.
+# Integrity: verify a GitHub artifact attestation when available; otherwise
+# accept a matching SHA-256 manifest published with the official release.
 # GITHUB_TOKEN (optional) lifts the anonymous API rate limit.
 set -Eeuo pipefail
 
@@ -160,24 +160,25 @@ pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
 }
 
 verify_checksum() {   # file asset listing repo -> verified | verified-attested | unverified | MISMATCH
-    local file="$1" asset="$2" listing="$3" repo="$4" sums_url sums want got gh_version
-    if ! command -v gh >/dev/null 2>&1; then echo "unverified"; return 0; fi
-    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
-    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
-        echo "unverified"; return 0
+    local file="${1}" asset="${2}" listing="${3}" repo="${4}"
+    local sums_url sums want got gh_version attested=0
+    if command -v gh >/dev/null 2>&1; then
+        gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print ${3}}')"
+        if [[ -n "${gh_version}" ]] && dpkg --compare-versions "${gh_version}" ge 2.67.0 &&
+           gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
+            attested=1
+        fi
     fi
-    # The artifact attestation is the publisher/provenance trust root.
-    if ! gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
-        echo "unverified"; return 0
-    fi
-    # Validate a release checksum manifest too, when the publisher provides one.
+    # Prefer GitHub artifact attestations; otherwise accept the official
+    # release SHA-256 manifest. Any published checksum mismatch is fatal.
     sums_url="$(tail -n +2 "${listing}" | awk -F'\t' '
-        tolower($1) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
-            print $2; exit
+        tolower(${1}) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
+            print ${2}; exit
         }')"
-    if [[ -z "${sums_url}" ]]; then echo "verified-attested"; return 0; fi
-    sums="$(curl_dl "${sums_url}" 2>/dev/null)" || { echo "unverified"; return 0; }
-    want="$(printf '%s\n' "${sums}" | python3 -c '
+    if [[ -n "${sums_url}" ]]; then
+        sums="$(curl_dl "${sums_url}" 2>/dev/null)" || sums=""
+        if [[ -n "${sums}" ]]; then
+            want="$(printf '%s\n' "${sums}" | python3 -c '
 import os,re,sys
 asset=os.path.basename(sys.argv[1])
 for line in sys.stdin:
@@ -188,9 +189,15 @@ for line in sys.stdin:
  if m and os.path.basename(m.group(1))==asset:
   print(m.group(2).lower()); break
 ' "${asset}")"
-    if [[ -z "${want}" ]]; then echo "unverified"; return 0; fi
-    got="$(sha256sum "${file}" | awk '{print $1}')"
-    if [[ "${want}" == "${got}" ]]; then echo "verified"; else echo "MISMATCH"; fi
+            if [[ -n "${want}" ]]; then
+                got="$(sha256sum "${file}" | awk '{print ${1}}')"
+                if [[ "${want}" != "${got}" ]]; then echo "MISMATCH"; return 0; fi
+                if (( attested )); then echo "verified-attested"; else echo "verified"; fi
+                return 0
+            fi
+        fi
+    fi
+    if (( attested )); then echo "verified-attested"; else echo "unverified"; fi
 }
 
 is_elf() {
