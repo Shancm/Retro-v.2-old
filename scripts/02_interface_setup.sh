@@ -254,6 +254,7 @@ if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
 fi
 
 usermod --append --groups sudo,audio,video,plugdev,netdev,wireshark "${USER_NAME}"
+for g in autologin nopasswdlogin; do gpasswd -d "${USER_NAME}" "${g}" >/dev/null 2>&1 || true; done
 usermod --shell /bin/bash "${USER_NAME}"
 # The separate credential service provisions a fresh password each live boot.
 # Never unlock, reset, or assign a password here.
