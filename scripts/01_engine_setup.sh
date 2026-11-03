@@ -178,7 +178,7 @@ create_user_and_groups() {
     local g
     # System groups: wireshark-common's postinst runs `addgroup --system wireshark`
     # which FAILS if the group already exists as a regular (non-system) group.
-    for g in autologin nopasswdlogin wireshark audio video plugdev netdev sudo; do
+    for g in wireshark audio video plugdev netdev sudo; do
         getent group "${g}" >/dev/null || groupadd --system "${g}"
     done
 
@@ -194,17 +194,13 @@ create_user_and_groups() {
             --groups "${RETRO_USER_GROUPS}" "${RETRO_USER}"
     fi
 
-    printf '%s:%s\n' "${RETRO_USER}" "${RETRO_USER_PASS}" | chpasswd
-    printf 'root:%s\n' "${RETRO_ROOT_PASS}" | chpasswd
-    usermod --unlock "${RETRO_USER}"
+    # Never bake credentials into the image. Both accounts remain locked
+    # until the live-only credential service provisions a random live password.
+    passwd --lock "${RETRO_USER}"
+    passwd --lock root
     chage --inactive -1 --mindays 0 --maxdays 99999 --expiredate -1 "${RETRO_USER}"
-
-    retro_write /etc/sudoers.d/90-retro-nopasswd 0440 <<EOF
-# Retro OS: passwordless sudo for the default live/desktop user
-${RETRO_USER} ALL=(ALL:ALL) NOPASSWD: ALL
-EOF
-    visudo -cf /etc/sudoers.d/90-retro-nopasswd >/dev/null \
-        || retro_die "Generated sudoers file failed visudo validation"
+    rm -f /etc/sudoers.d/90-retro-nopasswd
+    visudo -c >/dev/null || retro_die "System sudoers configuration failed validation"
 
     retro_write /etc/security/limits.d/90-retro.conf 0644 <<'EOF'
 # Raised descriptor limits for port scanners (RustScan / naabu / ffuf)
