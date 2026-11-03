@@ -164,6 +164,11 @@ verify_checksum() {   # file asset listing repo -> verified | unverified | MISMA
     if ! command -v gh >/dev/null 2>&1; then
         echo "unverified"; return 0
     fi
+    local gh_version
+    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+        echo "unverified"; return 0
+    fi
     # Verify signed provenance against the exact expected source repository.
     # A checksum file beside the asset is not publisher authentication.
     if ! gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
