@@ -82,12 +82,12 @@ jobs:
       - name: Bash syntax
         run: |
           set -Eeuo pipefail
-          bash -n build.sh test_iso.sh scripts/*.sh
+          bash -n build.sh config.env test_iso.sh scripts/*.sh
           bash -n overlay/usr/local/bin/retro
       - name: ShellCheck
         run: |
           set -Eeuo pipefail
-          shellcheck -x build.sh test_iso.sh scripts/*.sh
+          shellcheck -x build.sh config.env test_iso.sh scripts/*.sh
           shellcheck -x overlay/usr/local/bin/retro
       - name: YAML lint
         run: yamllint -s .github/workflows
