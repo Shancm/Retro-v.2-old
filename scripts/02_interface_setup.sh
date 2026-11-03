@@ -3,7 +3,7 @@
 # Retro OS v2.0 - 02_interface_setup.sh   (runs as root INSIDE the build chroot)
 #
 #   * Xorg + Openbox + Tint2 + PCManFM + Picom + Xfce4-Terminal + jgmenu
-#   * LightDM auto-login with explicit PAM stack (no black-screen login loop)
+#   * LightDM greeter with standard PAM authentication and live-only credentials
 #   * Windows 7-inspired theming (bottom panel, start orb, glass menu)
 #   * /etc/skel session files, helper scripts, dynamic menu generator
 #   * Multimedia apps (VLC, Evince, etc.)
@@ -113,28 +113,12 @@ write_templates() {
 minimum-vt=7
 
 [Seat:*]
-autologin-user=${RETRO_USER}
-autologin-user-timeout=0
-autologin-session=openbox
 user-session=openbox
 greeter-session=lightdm-gtk-greeter
 allow-guest=false
 greeter-hide-users=false
 session-wrapper=/etc/X11/Xsession
 xserver-command=X -nolisten tcp
-EOF
-
-    retro_write "${TEMPLATE_DIR}/lightdm-autologin.pam" 0644 <<'EOF'
-#%PAM-1.0
-auth      requisite pam_nologin.so
-auth      required  pam_succeed_if.so user != root quiet_success
-auth      required  pam_succeed_if.so user ingroup nopasswdlogin
-auth      required  pam_permit.so
-@include common-account
-session   required  pam_limits.so
-session   required  pam_env.so readenv=1
-session   required  pam_env.so readenv=1 envfile=/etc/default/locale
-@include common-session
 EOF
 
     retro_write "${TEMPLATE_DIR}/lightdm-gtk-greeter.conf" 0644 <<EOF
@@ -153,13 +137,13 @@ EOF
 }
 
 install_login_stack() {
-    retro_info "Installing LightDM auto-login configuration + PAM bypass"
+    retro_info "Installing LightDM greeter with standard PAM authentication"
     mkdir -p /etc/lightdm/lightdm.conf.d /etc/X11
-    install -m 0644 "${TEMPLATE_DIR}/lightdm.conf"            /etc/lightdm/lightdm.conf
-    install -m 0644 "${TEMPLATE_DIR}/lightdm.conf"            /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
+    install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf
+    install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf
     install -m 0644 "${TEMPLATE_DIR}/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
-    install -m 0644 "${TEMPLATE_DIR}/lightdm-autologin.pam"   /etc/pam.d/lightdm-autologin
-    install -m 0644 "${TEMPLATE_DIR}/Xwrapper.config"         /etc/X11/Xwrapper.config
+    install -m 0644 "${TEMPLATE_DIR}/Xwrapper.config" /etc/X11/Xwrapper.config
+    rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/pam.d/lightdm-autologin
 
     echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
     systemctl enable lightdm.service
@@ -251,35 +235,31 @@ write_live_fixup() {
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-TPL="/opt/retro-os/templates"
 USER_NAME="retro"
 USER_UID="1000"
 TAG="retro-live-fixup"
 log() { logger -t "${TAG}" -- "$*" 2>/dev/null || true; echo "[${TAG}] $*"; }
 
-for g in autologin nopasswdlogin wireshark; do
+# This helper must never change credentials on an installed system.
+grep -qw 'boot=live' /proc/cmdline || exit 0
+
+for g in wireshark audio video plugdev netdev sudo; do
     getent group "${g}" >/dev/null || { groupadd --system "${g}"; log "created group ${g}"; }
 done
 
 if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
-    log "user ${USER_NAME} missing - recreating"
     useradd --create-home --uid "${USER_UID}" --user-group --shell /bin/bash \
-        --comment "Retro OS User" "${USER_NAME}" 2>/dev/null \
-        || useradd --create-home --user-group --shell /bin/bash "${USER_NAME}"
+        --comment "Retro OS Live User" "${USER_NAME}"
     cp -a /etc/skel/. "/home/${USER_NAME}/" 2>/dev/null || true
 fi
 
-for g in autologin nopasswdlogin sudo audio video plugdev netdev wireshark; do
-    getent group "${g}" >/dev/null && usermod -aG "${g}" "${USER_NAME}" || true
-done
-usermod --shell /bin/bash "${USER_NAME}" || true
-
-status="$(passwd -S "${USER_NAME}" 2>/dev/null | awk '{print $2}')"
-if [[ "${status}" != "P" ]]; then
-    log "password state '${status}' - resetting to default and unlocking"
-    echo "${USER_NAME}:retro" | chpasswd
-fi
-usermod --unlock "${USER_NAME}" 2>/dev/null || true
+usermod --append --groups sudo,audio,video,plugdev,netdev,wireshark "${USER_NAME}"
+usermod --shell /bin/bash "${USER_NAME}"
+# The separate credential service provisions a fresh password each live boot.
+# Never unlock, reset, or assign a password here.
+passwd --lock "${USER_NAME}" >/dev/null 2>&1 || true
+rm -f /etc/sudoers.d/90-retro-nopasswd
+rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/pam.d/lightdm-autologin
 
 sync_file() {
     local src="$1" dst="$2" mode="$3"
@@ -290,17 +270,13 @@ sync_file() {
         log "restored ${dst}"
     fi
 }
-sync_file "${TPL}/lightdm.conf"            /etc/lightdm/lightdm.conf                       0644
-sync_file "${TPL}/lightdm.conf"            /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf 0644
-sync_file "${TPL}/lightdm-autologin.pam"   /etc/pam.d/lightdm-autologin                    0644
-sync_file "${TPL}/Xwrapper.config"         /etc/X11/Xwrapper.config                        0644
+sync_file /opt/retro-os/templates/lightdm.conf /etc/lightdm/lightdm.conf 0644
+sync_file /opt/retro-os/templates/lightdm.conf /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf 0644
+sync_file /opt/retro-os/templates/Xwrapper.config /etc/X11/Xwrapper.config 0644
 
 home="/home/${USER_NAME}"
 if [[ -d "${home}" ]]; then
-    if [[ "$(stat -c %U:%G "${home}")" != "${USER_NAME}:${USER_NAME}" ]]; then
-        chown -R "${USER_NAME}:${USER_NAME}" "${home}"
-        log "fixed ownership of ${home}"
-    fi
+    chown -R "${USER_NAME}:${USER_NAME}" "${home}"
     rm -f "${home}/.Xauthority" "${home}/.ICEauthority"
     for f in .xsession .xinitrc; do
         [[ -e "${home}/${f}" ]] || { cp -a "/etc/skel/${f}" "${home}/${f}" 2>/dev/null && chown "${USER_NAME}:${USER_NAME}" "${home}/${f}"; }
@@ -310,14 +286,55 @@ fi
 chmod 1777 /tmp /var/tmp 2>/dev/null || true
 mkdir -p /var/lib/lightdm /var/cache/lightdm /var/log/lightdm
 chown lightdm:lightdm /var/lib/lightdm /var/cache/lightdm 2>/dev/null || true
-log "login stack verified"
+log "live account prepared"
+EOF
+
+    retro_write "${RETRO_HELPER_DIR}/retro-live-credentials" 0750 <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# This credential is valid only for the current live boot.
+grep -qw 'boot=live' /proc/cmdline || exit 0
+id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
+
+password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+[[ "${#password}" -eq 48 ]] || { echo "credential generation failed" >&2; exit 1; }
+printf 'retro:%s\n' "${password}" | chpasswd
+passwd --unlock retro >/dev/null
+
+# Do not send the password to journald. Display it only on local VT1.
+{
+    printf '\n\nRetro OS temporary live-session login\n'
+    printf 'Username: retro\n'
+    printf 'Password: %s\n' "${password}"
+    printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
+} > /dev/tty1
+unset password
+EOF
+
+    retro_write /etc/systemd/system/retro-live-credentials.service 0644 <<'EOF'
+[Unit]
+Description=Generate one-boot credentials for Retro OS live session
+After=retro-live-fixup.service live-config.service local-fs.target
+Before=display-manager.service lightdm.service
+ConditionKernelCommandLine=boot=live
+
+[Service]
+Type=oneshot
+ExecStart=/opt/retro-os/bin/retro-live-credentials
+StandardOutput=null
+StandardError=journal
+TimeoutStartSec=30
+
+[Install]
+WantedBy=graphical.target multi-user.target
 EOF
 
     retro_write /etc/systemd/system/retro-live-fixup.service 0644 <<'EOF'
 [Unit]
-Description=Retro OS live session login-stack guard
+Description=Prepare the Retro OS live account and greeter
 After=live-config.service local-fs.target
-Before=systemd-user-sessions.service display-manager.service lightdm.service
+Before=retro-live-credentials.service display-manager.service lightdm.service
 ConditionKernelCommandLine=boot=live
 
 [Service]
@@ -328,7 +345,7 @@ ExecStart=/opt/retro-os/bin/retro-live-fixup
 [Install]
 WantedBy=graphical.target multi-user.target
 EOF
-    systemctl enable retro-live-fixup.service
+    systemctl enable retro-live-fixup.service retro-live-credentials.service
 }
 
 write_menu_tools() {
