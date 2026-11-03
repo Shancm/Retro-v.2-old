@@ -2,8 +2,7 @@
 # =============================================================================
 # Retro OS v2.0 - 02_interface_setup.sh
 # Debian Trixie X11 desktop: Openbox + Tint2 + LXTerminal + jgmenu.
-# LightDM/Xorg is retained only for the graphical login greeter; user sessions
-# sessions run directly on Xorg.
+# LightDM launches the Retro OS Openbox session directly on Xorg.
 # =============================================================================
 set -Eeuo pipefail
 
@@ -428,10 +427,8 @@ panel_dock = 0
 panel_layer = bottom
 panel_autohide = 0
 panel_strut = 1
-panel_background = #1b1d27 94
 panel_border_width = 1
 panel_border_color = #3a3f52 100
-rounded = 0
 launcher_padding = 5 2 5
 launcher_background_id = 0
 launcher_icon_size = 24
