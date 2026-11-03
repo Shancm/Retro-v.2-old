@@ -143,7 +143,7 @@ install_login_stack() {
     install -m 0644 "${TEMPLATE_DIR}/lightdm.conf" /etc/lightdm/lightdm.conf.d/50-retro-greeter.conf
     install -m 0644 "${TEMPLATE_DIR}/lightdm-gtk-greeter.conf" /etc/lightdm/lightdm-gtk-greeter.conf
     install -m 0644 "${TEMPLATE_DIR}/Xwrapper.config" /etc/X11/Xwrapper.config
-    rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/pam.d/lightdm-autologin
+    rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
 
     echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
     systemctl enable lightdm.service
@@ -260,7 +260,7 @@ usermod --shell /bin/bash "${USER_NAME}"
 # Never unlock, reset, or assign a password here.
 passwd --lock "${USER_NAME}" >/dev/null 2>&1 || true
 rm -f /etc/sudoers.d/90-retro-nopasswd
-rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf /etc/pam.d/lightdm-autologin
+rm -f /etc/lightdm/lightdm.conf.d/50-retro-autologin.conf
 
 sync_file() {
     local src="$1" dst="$2" mode="$3"
