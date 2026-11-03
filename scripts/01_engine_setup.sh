@@ -93,6 +93,36 @@ install_base_system() {
 }
 
 # -----------------------------------------------------------------------------
+# 3a. Trusted GitHub CLI for signed artifact provenance
+# -----------------------------------------------------------------------------
+install_github_cli() {
+    retro_info "Installing GitHub CLI from its signed official apt repository"
+    local keyring="/usr/share/keyrings/githubcli-archive-keyring.gpg"
+    local tmp="${keyring}.tmp"
+    install -d -m 0755 /usr/share/keyrings
+    rm -f "${tmp}"
+    curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "${tmp}" \
+        || retro_die "Could not download the GitHub CLI repository keyring"
+    gpg --show-keys "${tmp}" >/dev/null 2>&1 \
+        || retro_die "Downloaded GitHub CLI keyring is not a valid OpenPGP keyring"
+    install -o root -g root -m 0644 "${tmp}" "${keyring}"
+    rm -f "${tmp}"
+    printf 'deb [arch=%s signed-by=%s] https://cli.github.com/packages stable main\n' \
+        "$(dpkg --print-architecture)" "${keyring}" > /etc/apt/sources.list.d/github-cli.list
+
+    retro_retry 3 5 apt-get update
+    retro_apt_install gh
+
+    local gh_version
+    gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
+    if [[ -z "${gh_version}" ]] || ! dpkg --compare-versions "${gh_version}" ge 2.67.0; then
+        retro_die "GitHub CLI ${gh_version:-unknown} is too old or invalid; version 2.67.0+ is required for secure artifact attestation verification"
+    fi
+    retro_ok "GitHub CLI ${gh_version} supports patched artifact attestation verification"
+}
+
+# -----------------------------------------------------------------------------
 # 4. Kernel, microcode, firmware, live-boot engine
 # -----------------------------------------------------------------------------
 install_kernel_and_live() {
@@ -515,6 +545,7 @@ main() {
     install_policy_rc
     configure_apt
     install_base_system
+    install_github_cli
     install_kernel_and_live
     configure_locale_time
     create_user_and_groups
