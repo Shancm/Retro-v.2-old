@@ -54,22 +54,35 @@ jobs:
       - name: Install quality tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck yamllint python3 python3-venv
+          sudo apt-get install -y --no-install-recommends \
+            shellcheck yamllint python3 python3-venv
       - name: Check executable scripts
         run: |
           set -Eeuo pipefail
           chmod +x build.sh test_iso.sh scripts/*.sh
-          [[ ! -f overlay/usr/local/bin/retro ]] || chmod +x overlay/usr/local/bin/retro
-          [[ ! -f overlay/opt/retro-ai/retro_ai.py ]] || chmod +x overlay/opt/retro-ai/retro_ai.py
+          if [[ -f overlay/usr/local/bin/retro ]]; then
+            chmod +x overlay/usr/local/bin/retro
+          fi
+          if [[ -f overlay/opt/retro-ai/retro_ai.py ]]; then
+            chmod +x overlay/opt/retro-ai/retro_ai.py
+          fi
           test -x build.sh
           test -x test_iso.sh
           for f in scripts/*.sh; do test -x "$f"; done
-          [[ ! -f overlay/usr/local/bin/retro ]] || test -x overlay/usr/local/bin/retro
-          [[ ! -f overlay/opt/retro-ai/retro_ai.py ]] || test -x overlay/opt/retro-ai/retro_ai.py
+          if [[ -f overlay/usr/local/bin/retro ]]; then
+            test -x overlay/usr/local/bin/retro
+          fi
+          if [[ -f overlay/opt/retro-ai/retro_ai.py ]]; then
+            test -x overlay/opt/retro-ai/retro_ai.py
+          fi
       - name: Bash syntax
-        run: bash -n build.sh test_iso.sh scripts/*.sh overlay/usr/local/bin/retro
+        run: >-
+          bash -n build.sh test_iso.sh scripts/*.sh
+          overlay/usr/local/bin/retro
       - name: ShellCheck
-        run: shellcheck -x build.sh test_iso.sh scripts/*.sh overlay/usr/local/bin/retro
+        run: >-
+          shellcheck -x build.sh test_iso.sh scripts/*.sh
+          overlay/usr/local/bin/retro
       - name: YAML lint
         run: yamllint -s .github/workflows
       - name: Python unit tests
@@ -111,13 +124,33 @@ jobs:
       - name: Override Debian suite (manual dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          sed -i "s/^export DEBIAN_SUITE=.*/export DEBIAN_SUITE=\"${{ inputs.debian_suite }}\"/" config.env
+          python3 - "${{ inputs.debian_suite }}" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path("config.env")
+          content, count = re.subn(
+              r"^export DEBIAN_SUITE=.*$",
+              f'export DEBIAN_SUITE="{sys.argv[1]}"',
+              path.read_text(encoding="utf-8"),
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("could not override DEBIAN_SUITE")
+          path.write_text(content, encoding="utf-8")
+          PY
       - name: Make scripts executable and verify
         run: |
           set -Eeuo pipefail
           chmod +x build.sh test_iso.sh scripts/*.sh
-          [[ ! -f overlay/usr/local/bin/retro ]] || chmod +x overlay/usr/local/bin/retro
-          [[ ! -f overlay/opt/retro-ai/retro_ai.py ]] || chmod +x overlay/opt/retro-ai/retro_ai.py
+          if [[ -f overlay/usr/local/bin/retro ]]; then
+            chmod +x overlay/usr/local/bin/retro
+          fi
+          if [[ -f overlay/opt/retro-ai/retro_ai.py ]]; then
+            chmod +x overlay/opt/retro-ai/retro_ai.py
+          fi
           test -x build.sh
           test -x test_iso.sh
           for f in scripts/*.sh; do test -x "$f"; done
@@ -129,7 +162,10 @@ jobs:
           set -Eeuo pipefail
           test -s "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           test -s "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso.sha256"
-          (cd "$BUILD_ROOT/out" && sha256sum --status -c retro-os-v2.0-amd64.iso.sha256)
+          (
+            cd "$BUILD_ROOT/out"
+            sha256sum --status -c retro-os-v2.0-amd64.iso.sha256
+          )
       - name: Upload ISO artifact for firmware matrix
         uses: actions/upload-artifact@v4
         with:
@@ -145,7 +181,9 @@ jobs:
         with:
           tag_name: "v2.0-build-${{ github.run_number }}"
           name: "Retro OS v2.0 (Build #${{ github.run_number }})"
-          body: "Automated Debian-based BIOS/UEFI hybrid ISO with SHA-256 checksum."
+          body: >-
+            Automated Debian-based BIOS/UEFI hybrid ISO
+            with SHA-256 checksum.
           files: |
             /opt/retro-build/out/*.iso
             /opt/retro-build/out/*.sha256
@@ -182,7 +220,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           apt-get update -qq
-          apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso python3
+          apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf xorriso python3
       - name: Download built ISO
         uses: actions/download-artifact@v4
         with:
@@ -191,14 +230,19 @@ jobs:
       - name: Verify downloaded ISO checksum
         run: |
           set -Eeuo pipefail
-          (cd "$BUILD_ROOT/out" && sha256sum --status -c retro-os-v2.0-amd64.iso.sha256)
+          (
+            cd "$BUILD_ROOT/out"
+            sha256sum --status -c retro-os-v2.0-amd64.iso.sha256
+          )
       - name: Run ${{ matrix.firmware }} QEMU boot test
         run: |
           set -Eeuo pipefail
           if [[ "${{ matrix.firmware }}" == "bios" ]]; then
-            ./test_iso.sh --bios --report --no-kvm --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
+            ./test_iso.sh --bios --report --no-kvm \
+              --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           else
-            ./test_iso.sh --uefi --report --no-kvm --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
+            ./test_iso.sh --uefi --report --no-kvm \
+              --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           fi
       - name: Upload firmware test logs
         if: always()
