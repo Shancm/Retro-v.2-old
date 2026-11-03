@@ -367,12 +367,24 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     req_check "No login loop" "LOGIN_LOOP_SUSPECT=${v}" "0" "$([[ "${v}" == "0" ]] && echo 1 || echo 0)"
     v="${KV[LIGHTDM_ACTIVE]:-n/a}"
     req_check "LightDM active" "LIGHTDM_ACTIVE=${v}" "active" "$([[ "${v}" == "active" ]] && echo 1 || echo 0)"
-    v="${KV[LABWC_RUNNING]:-n/a}"
-    req_check "Labwc Wayland compositor active" "LABWC_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
-    v="${KV[WAYBAR_RUNNING]:-n/a}"
-    req_check "Waybar panel active" "WAYBAR_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
-    v="${KV[WAYLAND_SOCKET]:-n/a}"
-    req_check "Wayland display socket present" "WAYLAND_SOCKET=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[OPENBOX_RUNNING]:-n/a}"
+    req_check "Openbox window manager active" "OPENBOX_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[TINT2_RUNNING]:-n/a}"
+    req_check "Tint2 panel active" "TINT2_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[XORG_RUNNING]:-n/a}"
+    req_check "Xorg server active" "XORG_RUNNING=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[X11_SOCKET]:-n/a}"
+    req_check "X11 :0 socket active" "X11_SOCKET=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[DISPLAY]:-n/a}"
+    req_check "DISPLAY is :0" "DISPLAY=${v}" ":0" "$([[ "${v}" == ":0" ]] && echo 1 || echo 0)"
+    v="${KV[JGMENU_INSTALLED]:-n/a}"
+    req_check "jgmenu launcher installed" "JGMENU_INSTALLED=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    v="${KV[LXTERMINAL_INSTALLED]:-n/a}"
+    req_check "lxterminal installed" "LXTERMINAL_INSTALLED=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    for key in PROC_pcmanfm PROC_nm_applet PROC_blueman_applet PROC_volumeicon; do
+        v="${KV[${key}]:-n/a}"
+        req_check "Desktop process ${key}" "${key}=${v}" "yes" "$([[ "${v}" == "yes" ]] && echo 1 || echo 0)"
+    done
     v="${KV[TIER]:-n/a}"
     req_check "Adaptive tier (${KV[RAM_MB]:-?} MiB seen)" "TIER=${v}" "${tier}" "$([[ "${v}" == "${tier}" ]] && echo 1 || echo 0)"
     v="${KV[ZRAM]:-n/a}"
@@ -389,14 +401,6 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     fi
 
     printf '\n%s  Supporting checks (advisory)%s\n' "${T_D}" "${T_0}"
-    adv_check "Labwc compositor"       "LABWC_RUNNING=${KV[LABWC_RUNNING]:-n/a}" "yes" "$([[ "${KV[LABWC_RUNNING]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Waybar panel"            "WAYBAR_RUNNING=${KV[WAYBAR_RUNNING]:-n/a}" "yes" "$([[ "${KV[WAYBAR_RUNNING]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Wayland socket"          "WAYLAND_SOCKET=${KV[WAYLAND_SOCKET]:-n/a}" "yes" "$([[ "${KV[WAYLAND_SOCKET]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Foot terminal installed" "FOOT_INSTALLED=${KV[FOOT_INSTALLED]:-n/a}" "yes" "$([[ "${KV[FOOT_INSTALLED]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Wofi launcher installed" "WOFI_INSTALLED=${KV[WOFI_INSTALLED]:-n/a}" "yes" "$([[ "${KV[WOFI_INSTALLED]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Desktop (pcmanfm)"     "PROC_pcmanfm=${KV[PROC_pcmanfm]:-n/a}"     "yes"    "$([[ "${KV[PROC_pcmanfm]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Tray: nm-applet"       "PROC_nm_applet=${KV[PROC_nm_applet]:-n/a}" "yes"    "$([[ "${KV[PROC_nm_applet]:-}" == "yes" ]] && echo 1 || echo 0)"
-    adv_check "Tray: volumeicon"      "PROC_volumeicon=${KV[PROC_volumeicon]:-n/a}" "yes"  "$([[ "${KV[PROC_volumeicon]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "Wallpaper installed"   "WALLPAPER=${KV[WALLPAPER]:-n/a}"           "yes"    "$([[ "${KV[WALLPAPER]:-}" == "yes" ]] && echo 1 || echo 0)"
     adv_check "EarlyOOM active"       "EARLYOOM_ACTIVE=${KV[EARLYOOM_ACTIVE]:-n/a}" "active" "$([[ "${KV[EARLYOOM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
     if [[ "${tier}" == "low" ]]; then
@@ -405,10 +409,10 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
     fi
     adv_check "TCP congestion = bbr"  "BBR=${KV[BBR]:-n/a}"                      "bbr"    "$([[ "${KV[BBR]:-}" == "bbr" ]] && echo 1 || echo 0)"
     adv_check "systemd state"         "SYSTEM_STATE=${KV[SYSTEM_STATE]:-n/a}"    "running" "$([[ "${KV[SYSTEM_STATE]:-}" == "running" ]] && echo 1 || echo 0)"
-    adv_check "No failed units"       "FAILED_UNITS=${KV[FAILED_UNITS]:-n/a}"    "0"      "$([[ "${KV[FAILED_UNITS]:-x}" == "0" ]] && echo 1 || echo 0)"
+    req_check "No failed systemd units" "FAILED_UNITS=${KV[FAILED_UNITS]:-n/a}" "0" "$([[ "${KV[FAILED_UNITS]:-x}" == "0" ]] && echo 1 || echo 0)"
     adv_check "retro CLI works"       "RETRO_CLI=${KV[RETRO_CLI]:-n/a}"          "yes"    "$([[ "${KV[RETRO_CLI]:-}" == "yes" ]] && echo 1 || echo 0)"
     for key in $(printf '%s\n' "${!KV[@]}" | grep '^TOOL_' | sort); do
-        adv_check "tool ${key#TOOL_}" "${KV[${key}]}" "ok" "$([[ "${KV[${key}]}" == "ok" ]] && echo 1 || echo 0)"
+        req_check "security tool ${key#TOOL_}" "${KV[${key}]}" "ok" "$([[ "${KV[${key}]}" == "ok" ]] && echo 1 || echo 0)"
     done
 
     if (( REQ_FAIL > 0 || ADV_WARN > 0 )) && (( ${#DETAIL[@]} > 0 )); then
