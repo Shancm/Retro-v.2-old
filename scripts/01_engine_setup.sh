@@ -89,6 +89,10 @@ install_base_system() {
         bluetooth bluez bluez-tools blueman rfkill \
         network-manager network-manager-gnome \
         earlyoom libcap2-bin
+
+    if [[ -f /usr/local/sbin/retro-usb-maker ]]; then
+        chmod 0755 /usr/local/sbin/retro-usb-maker
+    fi
 }
 
 # -----------------------------------------------------------------------------
