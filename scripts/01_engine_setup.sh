@@ -192,6 +192,15 @@ configure_locale_time() {
     [[ -f "${zoneinfo}" ]] || retro_die "Configured timezone does not exist: ${RETRO_TIMEZONE}"
     ln -snf "${zoneinfo}" /etc/localtime
     printf '%s\n' "${RETRO_TIMEZONE}" > /etc/timezone
+
+    # Keep the live and installed system clocks synchronized automatically
+    # once networking is available. systemd-timesyncd retries after boot.
+    mkdir -p /etc/systemd/timesyncd.conf.d
+    retro_write /etc/systemd/timesyncd.conf.d/20-retro-ntp.conf 0644 <<'EOF'
+[Time]
+NTP=0.in.pool.ntp.org 1.in.pool.ntp.org time.cloudflare.com
+FallbackNTP=0.pool.ntp.org 1.pool.ntp.org
+EOF
     systemctl enable systemd-timesyncd.service
     systemctl enable bluetooth.service || true
 
