@@ -1,0 +1,141 @@
+name: Diagnose failed Retro OS builds
+
+on:
+  workflow_run:
+    workflows:
+      - Build and test Retro OS v2.0
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: retro-os-failure-triage-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Collect failure details and open a diagnosis issue
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download build log artifact when available
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: retro-os-v2-build-logs
+          path: failure-artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Classify known failure signatures
+        id: classify
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [p for p in Path("failure-artifacts").rglob("*") if p.is_file()] if Path("failure-artifacts").exists() else []
+          chunks = []
+          for path in files:
+              try:
+                  text = path.read_text(errors="replace")
+              except OSError:
+                  continue
+              chunks.append(f"\n--- {path} ---\n{text[-120000:]}")
+          logs = "\n".join(chunks)
+
+          signatures = [
+              (r"wallpaper resolution is below 1280x800|IHDR|PNG", "PNG wallpaper validation / image header", "Check PNG signature, IHDR length and type, then read width and height from the IHDR data. Confirm the source image is at least 1280x800."),
+              (r"NO_PUBKEY|EXPKEYSIG|The repository .* is not signed|GPG error", "APT repository signing/key failure", "Check the Debian suite, repository URL, keyring package and signed-by configuration. Do not disable signature verification."),
+              (r"Unable to locate package|Package .* has no installation candidate", "APT package unavailable", "Verify the package name and that the configured Debian suite/component provides it. Refresh package indexes before changing dependencies."),
+              (r"dpkg was interrupted|dpkg --configure -a|half-configured|post-installation script.*returned error", "dpkg package configuration failure", "Inspect the first failing package post-installation script and its log. Fix the package/configuration cause; do not mask dpkg errors."),
+              (r"No space left on device|ENOSPC", "Build runner disk-space exhaustion", "Check runner and build-root free space, temporary files and artifact size. Remove only disposable build caches."),
+              (r"Could not resolve|Temporary failure resolving|Connection timed out|Network is unreachable", "Network/DNS or upstream availability failure", "Check DNS and connectivity from the runner and retry only after confirming this is transient."),
+              (r"grub-install.*error|grub-mkstandalone.*error|isohybrid.*error|xorriso.*FAILURE", "Bootloader or ISO assembly failure", "Inspect the complete command output, target architecture, BIOS/UEFI package set and xorriso arguments."),
+              (r"qemu.*(failed|error)|Boot test.*failed|timed out waiting", "QEMU firmware boot-test failure", "Inspect the BIOS/UEFI test log, serial output, firmware image and boot timeout. Confirm the ISO actually reaches the expected live boot target."),
+          ]
+
+          matches = []
+          for pattern, title, advice in signatures:
+              if re.search(pattern, logs, re.IGNORECASE):
+                  matches.append((title, advice))
+
+          if matches:
+              result = "\n".join(f"- **{title}:** {advice}" for title, advice in matches)
+              category = "; ".join(title for title, _ in matches)
+          elif logs:
+              result = "- No known signature matched. Treat this as an unknown failure and inspect the full job log before changing source files."
+              category = "Unknown build failure"
+          else:
+              result = "- Build-log artifact was unavailable (for example, the quality job may have failed before the ISO build started). Use the failed job details linked below."
+              category = "Failure logs unavailable"
+
+          Path("triage-result.md").write_text(
+              "## Automated signature analysis\n\n"
+              f"**Classification:** {category}\n\n"
+              f"{result}\n\n"
+              "This workflow is intentionally diagnostic-only: it does not edit source files, disable checks, publish releases, or merge changes. A source fix must be reviewed and validated by the normal quality, ISO-build and BIOS/UEFI jobs.\n"
+          )
+          PY
+
+      - name: Create failure diagnosis issue
+        uses: actions/github-script@v7
+        env:
+          TRIAGE_FILE: triage-result.md
+        with:
+          script: |
+            const fs = require('fs');
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              { owner, repo, run_id: run.id, per_page: 100 }
+            );
+            const failed = jobs.filter(j => ['failure', 'timed_out', 'cancelled', 'action_required'].includes(j.conclusion));
+            const jobLines = failed.length
+              ? failed.map(j => `- **${j.name}** — ${j.conclusion}; [job log](${j.html_url})`).join('\n')
+              : '- GitHub reported a failed workflow, but no failed job was returned by the Jobs API.';
+            const analysis = fs.readFileSync(process.env.TRIAGE_FILE, 'utf8');
+            const body = [
+              'A Retro OS CI workflow failed. This issue was created automatically by the failure-triage workflow.',
+              '',
+              `- **Workflow:** [${run.name} #${run.run_number}](${run.html_url})`,
+              `- **Branch:** ${run.head_branch}`,
+              `- **Commit:** ${run.head_sha}`,
+              `- **Event:** ${run.event}`,
+              `- **Conclusion:** ${run.conclusion}`,
+              '',
+              '## Failed jobs',
+              jobLines,
+              '',
+              analysis,
+              '',
+              '## Next steps',
+              '1. Open the failed job log and find the first meaningful error (later errors may be consequences).',
+              '2. Reproduce the failure where practical and implement a narrow, reviewed fix.',
+              '3. Confirm Bash syntax, ShellCheck, YAML lint and unit tests pass.',
+              '4. Re-run the ISO build and both BIOS and UEFI boot tests before merging or releasing.'
+            ].join('\n');
+
+            const title = `CI failure triage: run ${run.run_number} (${run.head_branch})`;
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', per_page: 100
+            });
+            const duplicate = existing.find(i => !i.pull_request && i.title === title);
+            if (duplicate) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: duplicate.number,
+                body: `Another triage attempt for [workflow run ${run.run_number}](${run.html_url}) completed.\n\n${analysis}`
+              });
+              core.info(`Updated existing issue #${duplicate.number}`);
+            } else {
+              const issue = await github.rest.issues.create({ owner, repo, title, body });
+              core.info(`Created diagnosis issue #${issue.data.number}: ${issue.data.html_url}`);
+            }
