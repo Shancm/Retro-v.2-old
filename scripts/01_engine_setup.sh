@@ -93,6 +93,9 @@ install_base_system() {
     if [[ -f /usr/local/sbin/retro-usb-maker ]]; then
         chmod 0755 /usr/local/sbin/retro-usb-maker
     fi
+    if [[ -f /usr/local/sbin/retro-hardware-report ]]; then
+        chmod 0755 /usr/local/sbin/retro-hardware-report
+    fi
 }
 
 # -----------------------------------------------------------------------------
