@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 Usage: sudo retro-usb-maker --iso FILE.iso --device /dev/sdX
 WARNING: erases the entire selected USB disk. Requires typing the exact device path.
-Creates an ext4 partition labelled "persistence" with /home union.
+Creates an ext4 partition labelled "persistence", with /home union in persistence.conf.
 Persistence is NOT encrypted; do not store secrets on a lost/shared USB.
 EOF
 }
