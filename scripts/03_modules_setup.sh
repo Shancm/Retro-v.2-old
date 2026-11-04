@@ -88,7 +88,6 @@ CONF="/etc/retro-os/tools.conf"
 # shellcheck source=/dev/null
 [[ -r "${CONF}" ]] && source "${CONF}"
 
-CHANNEL="${RETRO_TOOLS_CHANNEL:-latest}"
 STRICT="${RETRO_TOOLS_STRICT:-0}"
 DEST="${RETRO_TOOLS_DEST:-/usr/local/bin}"
 MANIFEST="${RETRO_TOOLS_MANIFEST:-/etc/retro-os/modern-tools.manifest}"
@@ -160,8 +159,8 @@ pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
     return 1
 }
 
-verify_checksum() {   # file asset listing repo tag -> verified-attested | unverified | MISMATCH
-    local file="${1}" asset="${2}" listing="${3}" repo="${4}" tag="${5}"
+verify_checksum() {   # file asset listing repo -> verified-attested | unverified | MISMATCH
+    local file="${1}" asset="${2}" listing="${3}" repo="${4}"
     local sums_url sums want got gh_version attested=0
     if command -v gh >/dev/null 2>&1; then
         gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
@@ -284,7 +283,7 @@ stage_tool() {
         rm -rf "${work}"; return 1
     fi
 
-    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}" "${tag}")"
+    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}")"
     case "${status}" in
         verified-attested)
             ;;
