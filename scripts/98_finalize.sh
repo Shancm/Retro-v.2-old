@@ -76,12 +76,20 @@ PY
     python3 - "${wallpaper}" <<'PY'
 import struct
 import sys
+
 with open(sys.argv[1], "rb") as image:
     if image.read(8) != b"\x89PNG\r\n\x1a\n":
         raise SystemExit("invalid PNG signature")
-    width, height = struct.unpack(">II", image.read(8))
+    ihdr_len, ihdr_type = struct.unpack(">I4s", image.read(8))
+    if ihdr_len != 13 or ihdr_type != b"IHDR":
+        raise SystemExit("missing or invalid IHDR chunk")
+    dimensions = image.read(8)
+    if len(dimensions) != 8:
+        raise SystemExit("truncated PNG IHDR dimensions")
+    width, height = struct.unpack(">II", dimensions)
+
 if width < 1280 or height < 800:
-    raise SystemExit("wallpaper resolution is below 1280x800")
+    raise SystemExit(f"wallpaper resolution is below 1280x800 ({width}x{height})")
 PY
     retro_ok "final wallpaper verified: ${wallpaper} (1280x800)"
 }
