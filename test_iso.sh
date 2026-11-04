@@ -450,7 +450,7 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
 
     local -a q=(qemu-system-x86_64 -name "retro-test-${label}" -m "${ram}M" -smp "${smp}" -vga std
                 -display none -serial stdio -monitor "unix:${sock},server,nowait" -no-reboot
-                -netdev "user,id=n0" -device "virtio-net-pci,netdev=n0"
+                -netdev "user,id=n0" -device "virtio-net-pci,netdev=n0")
     if (( USE_KVM )); then q+=(-enable-kvm -cpu host); else q+=(-accel tcg -cpu max); fi
 
     if [[ "${mode}" == "bios" ]]; then
