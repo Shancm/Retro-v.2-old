@@ -27,11 +27,11 @@ install_classic_tools() {
 
     retro_info "Installing classic auditing tools (CLI + GUI)"
     retro_apt_install \
-        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite \
+        nmap wireshark tshark aircrack-ng hydra john nikto sqlmap wifite ffuf \
         tcpdump netcat-openbsd dnsutils whois traceroute libpcap0.8 iw
 
     # John the Ripper CLI is mandatory; GUI tools and ffuf are optional.
-    retro_apt_install_optional john-data johnny ffuf
+    retro_apt_install_optional john-data johnny
 
     # Hydra GUI (XHydra) & Nmap GUI (NmapSI4) & Gufw Firewall
     retro_apt_install_optional xhydra nmapsi4 gufw etherape
@@ -64,315 +64,198 @@ RETRO_TOOLS_STRICT="${RETRO_TOOLS_STRICT}"
 RETRO_PIN_RUSTSCAN="${RETRO_PIN_RUSTSCAN}"
 RETRO_PIN_FFUF="${RETRO_PIN_FFUF}"
 RETRO_PIN_HTTPX="${RETRO_PIN_HTTPX}"
+RETRO_PIN_HTTPX_SHA256="${RETRO_PIN_HTTPX_SHA256}"
 RETRO_PIN_NAABU="${RETRO_PIN_NAABU}"
+RETRO_PIN_NAABU_SHA256="${RETRO_PIN_NAABU_SHA256}"
 EOF
 
-    retro_write "${RETRO_HELPER_DIR}/retro-fetch-tools" 0755 <<'EOF'
+    retro_write "\${RETRO_HELPER_DIR}/retro-fetch-tools" 0755 <<'EOF'
 #!/usr/bin/env bash
-# retro-fetch-tools - stage pre-compiled Go/Rust auditing binaries into /usr/local/bin
-#
-#   retro-fetch-tools --all | rustscan ffuf httpx naabu   [--strict]
-#   retro-fetch-tools --list
-#
-# Resolution order per tool:
-#   1. GitHub "latest" release (channel=latest)       -> asset chosen by regex
-#   2. GitHub release for the pinned version          -> asset chosen by regex
-#   3. direct download URL for the pinned version     -> no API needed
-# Integrity: only a GitHub artifact attestation for the exact pinned repository
-# is accepted. Release checksum files are additional mismatch detectors, not
-# authentication sources by themselves.
-# GITHUB_TOKEN (optional) lifts the anonymous API rate limit.
 set -Eeuo pipefail
-
 CONF="/etc/retro-os/tools.conf"
-# shellcheck source=/dev/null
-[[ -r "${CONF}" ]] && source "${CONF}"
-
-STRICT="${RETRO_TOOLS_STRICT:-0}"
+[[ -r "$CONF" ]] && source "$CONF"
+STRICT="${RETRO_TOOLS_STRICT:-1}"
 DEST="${RETRO_TOOLS_DEST:-/usr/local/bin}"
 MANIFEST="${RETRO_TOOLS_MANIFEST:-/etc/retro-os/modern-tools.manifest}"
-ALL_TOOLS=(rustscan ffuf httpx naabu)
-
+ALL_TOOLS=(rustscan httpx naabu)
+BUILD_DEPS_TO_PURGE=()
 log()  { printf '[retro-fetch-tools] %s\n' "$*"; }
 warn() { printf '[retro-fetch-tools] WARN: %s\n' "$*" >&2; }
+die()  { printf '[retro-fetch-tools] ERROR: %s\n' "$*" >&2; }
 
-REPO="" BIN="" PIN="" TAG_PREFIX="" ASSET_RES="" PIN_ASSET=""
+record_manifest() {
+    local name="$1"
+    mkdir -p "$(dirname "$MANIFEST")"
+    touch "$MANIFEST"
+    grep -v "^${name}|" "$MANIFEST" > "${MANIFEST}.tmp" || true
+    printf '%s|%s|%s|%s|%s|%s\n' "$@" "$(date -u +%FT%TZ)" >> "${MANIFEST}.tmp"
+    mv -f "${MANIFEST}.tmp" "$MANIFEST"
+    chmod 0644 "$MANIFEST"
+}
+cleanup_build_deps() {
+    if (( ${#BUILD_DEPS_TO_PURGE[@]} > 0 )); then
+        apt-get purge -y "${BUILD_DEPS_TO_PURGE[@]}" >/dev/null 2>&1 || true
+        apt-get autoremove --purge -y >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_build_deps EXIT
 
+ensure_cargo() {
+    local pkg status
+    for pkg in cargo rustc build-essential; do
+        status="$(dpkg-query -W -f='${db:Status-Status}' "$pkg" 2>/dev/null || true)"
+        [[ "$status" == installed ]] || BUILD_DEPS_TO_PURGE+=("$pkg")
+    done
+    apt-get update -qq || return 1
+    apt-get install -y --no-install-recommends cargo rustc build-essential || return 1
+    command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1
+}
 tool_meta() {
     case "$1" in
-        rustscan)
-            REPO="bee-san/RustScan"; BIN="rustscan"; PIN="${RETRO_PIN_RUSTSCAN:-2.3.0}"; TAG_PREFIX=""
-            ASSET_RES='(_amd64\.deb$|x86_64-linux.*\.(zip|tar\.gz|tar\.gz\.zip)$|linux.*(x86_64|amd64).*\.(zip|tar\.gz|deb)$)'
-            PIN_ASSET='rustscan_@V@_amd64.deb' ;;
-        ffuf)
-            REPO="ffuf/ffuf"; BIN="ffuf"; PIN="${RETRO_PIN_FFUF:-2.1.0}"; TAG_PREFIX="v"
-            ASSET_RES='linux_amd64\.tar\.gz$'
-            PIN_ASSET='ffuf_@V@_linux_amd64.tar.gz' ;;
+        rustscan) BIN="rustscan"; PIN="${RETRO_PIN_RUSTSCAN:-2.4.1}"; METHOD="cargo" ;;
         httpx)
-            REPO="projectdiscovery/httpx"; BIN="httpx"; PIN="${RETRO_PIN_HTTPX:-1.6.9}"; TAG_PREFIX="v"
-            ASSET_RES='linux_amd64\.zip$'
-            PIN_ASSET='httpx_@V@_linux_amd64.zip' ;;
+            BIN="httpx"; PIN="${RETRO_PIN_HTTPX:-1.12.0}"
+            EXPECTED_SHA256="${RETRO_PIN_HTTPX_SHA256:-}"
+            REPO="projectdiscovery/httpx"; ASSET="httpx_${PIN}_linux_amd64.zip"; METHOD="github-release" ;;
         naabu)
-            REPO="projectdiscovery/naabu"; BIN="naabu"; PIN="${RETRO_PIN_NAABU:-2.3.1}"; TAG_PREFIX="v"
-            ASSET_RES='linux_amd64\.zip$'
-            PIN_ASSET='naabu_@V@_linux_amd64.zip' ;;
+            BIN="naabu"; PIN="${RETRO_PIN_NAABU:-2.3.1}"
+            EXPECTED_SHA256="${RETRO_PIN_NAABU_SHA256:-}"
+            REPO="projectdiscovery/naabu"; ASSET="naabu_${PIN}_linux_amd64.zip"; METHOD="github-release" ;;
         *) return 1 ;;
     esac
 }
-
-curl_dl() {
-    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 600 "$@"
-}
-
-gh_release_json() {
-    local repo="$1" tag="$2" out="$3" url
-    if [[ "${tag}" == "latest" ]]; then
-        url="https://api.github.com/repos/${repo}/releases/latest"
-    else
-        url="https://api.github.com/repos/${repo}/releases/tags/${tag}"
-    fi
-    local -a hdr=(-H "Accept: application/vnd.github+json" -H "User-Agent: retro-os-fetch-tools")
-    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        hdr+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-    fi
-    curl_dl "${hdr[@]}" -o "${out}" "${url}"
-}
-
-# json -> "tag" on line 1, then "name<TAB>url" per asset
-parse_release() {
-    python3 - "$1" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-print(d.get("tag_name", ""))
-for a in d.get("assets", []):
-    print("%s\t%s" % (a["name"], a["browser_download_url"]))
-PY
-}
-
-pick_asset() {   # listing(file) -> prints "name<TAB>url" of first regex hit
-    local listing="$1" re hit
-    while IFS= read -r re; do
-        [[ -n "${re}" ]] || continue
-        hit="$(tail -n +2 "${listing}" | awk -F'\t' -v re="${re}" '$1 ~ re {print; exit}')"
-        if [[ -n "${hit}" ]]; then printf '%s\n' "${hit}"; return 0; fi
-    done <<< "${ASSET_RES}"
-    return 1
-}
-
-verify_checksum() {   # file asset listing repo -> verified-attested | unverified | MISMATCH
-    local file="${1}" asset="${2}" listing="${3}" repo="${4}"
-    local sums_url sums want got gh_version attested=0
-    if command -v gh >/dev/null 2>&1; then
-        gh_version="$(gh version 2>/dev/null | awk 'NR == 1 {print $3}')"
-        if [[ -n "${gh_version}" ]] && dpkg --compare-versions "${gh_version}" ge 2.67.0 &&
-           gh attestation verify "${file}" --repo "${repo}" >/dev/null 2>&1; then
-            attested=1
-        fi
-    fi
-    sums_url="$(tail -n +2 "${listing}" | awk -F'\t' '
-        tolower($1) ~ /(sha256sums?([.]txt)?|checksums?([.]txt)?|[.]sha256(sum)?([.]txt)?)$/ {
-            print $2; exit
-        }')"
-    if [[ -n "${sums_url}" ]]; then
-        sums="$(curl_dl "${sums_url}" 2>/dev/null)" || sums=""
-        if [[ -n "${sums}" ]]; then
-            want="$(printf '%s\n' "${sums}" | python3 -c '
-import os,re,sys
-asset=os.path.basename(sys.argv[1])
-for line in sys.stdin:
- m=re.match(r"^\s*([0-9a-fA-F]{64})\s+[* ]?(.+?)\s*$",line)
- if m and os.path.basename(m.group(2))==asset:
-  print(m.group(1).lower()); break
- m=re.match(r"^\s*SHA256\s*\((.+?)\)\s*=\s*([0-9a-fA-F]{64})\s*$",line,re.I)
- if m and os.path.basename(m.group(1))==asset:
-  print(m.group(2).lower()); break
-' "${asset}")"
-            if [[ -n "${want}" ]]; then
-                got="$(sha256sum "${file}" | awk '{print $1}')"
-                if [[ "${want}" != "${got}" ]]; then echo "MISMATCH"; return 0; fi
-                if (( attested )); then
-                    echo "verified-attested"
-                else
-                    echo "unverified"
-                fi
-                return 0
-            fi
-        fi
-    fi
-    if (( attested )); then
-        echo "verified-attested"
-    else
-        echo "unverified"
-    fi
-}
-
 is_elf() {
     [[ "$(head -c4 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "7f454c46" ]]
 }
-
-extract_archive() {   # file outdir
-    local file="$1" out="$2" inner
-    mkdir -p "${out}"
-    case "${file}" in
-        *.deb)            dpkg-deb -x "${file}" "${out}" ;;
-        *.tar.gz|*.tgz)   tar -xzf "${file}" -C "${out}" ;;
-        *.zip)
-            unzip -q -o "${file}" -d "${out}"
-            # some projects ship a zip that wraps a tar.gz
-            while IFS= read -r inner; do
-                tar -xzf "${inner}" -C "${out}" || true
-            done < <(find "${out}" -type f \( -name '*.tar.gz' -o -name '*.tgz' \))
-            ;;
-        *)                cp "${file}" "${out}/" ;;
-    esac
+build_rustscan() {
+    local work="$1" bin
+    ensure_cargo || { die "could not install temporary Rust build dependencies"; return 1; }
+    log "rustscan: building pinned crates.io package $PIN using Cargo registry checksums"
+    if ! CARGO_HOME="$work/cargo-home" CARGO_TARGET_DIR="$work/cargo-target" \
+        cargo install --locked --version "$PIN" --root "$work/install" rustscan; then
+        die "Cargo build failed for pinned RustScan $PIN"; return 1
+    fi
+    bin="$work/install/bin/rustscan"
+    [[ -x "$bin" ]] || { die "Cargo did not produce rustscan"; return 1; }
+    "$bin" --version 2>&1 | grep -F "$PIN" >/dev/null \
+        || { die "RustScan binary version does not match pin $PIN"; return 1; }
+    install -D -m 0755 -o root -g root "$bin" "$DEST/.rustscan.new" || return 1
+    mv -f "$DEST/.rustscan.new" "$DEST/rustscan"
+    record_manifest rustscan "$PIN" "crates.io/cargo" "$(sha256sum "$DEST/rustscan" | awk '{print $1}')" "verified-cargo-lock"
+    log "rustscan: installed pinned Cargo build $PIN"
 }
-
-record_manifest() {   # name tag asset sha status
-    local name="$1"
-    mkdir -p "$(dirname "${MANIFEST}")"
-    touch "${MANIFEST}"
-    grep -v "^${name}|" "${MANIFEST}" > "${MANIFEST}.tmp" || true
-    printf '%s|%s|%s|%s|%s|%s\n' "$@" "$(date -u +%FT%TZ)" >> "${MANIFEST}.tmp"
-    mv -f "${MANIFEST}.tmp" "${MANIFEST}"
-    chmod 0644 "${MANIFEST}"
+release_asset_info() {
+    python3 - "$1" "$2" "$3" <<'PY'
+import json, sys
+path, expected_tag, asset_name = sys.argv[1:]
+with open(path, encoding="utf-8") as stream:
+    release = json.load(stream)
+if release.get("tag_name") != expected_tag:
+    raise SystemExit("release tag does not match the pinned version")
+matches = [a for a in release.get("assets", []) if a.get("name") == asset_name]
+if len(matches) != 1:
+    raise SystemExit("pinned asset is missing or duplicated")
+asset = matches[0]
+digest = asset.get("digest") or ""
+url = asset.get("browser_download_url") or ""
+if not digest.startswith("sha256:") or not url.startswith("https://"):
+    raise SystemExit("GitHub did not provide an HTTPS asset URL and SHA-256 digest")
+print(url)
+print(digest)
+PY
 }
-
+stage_release_binary() {
+    local name="$1" work="$2" tag json info url remote_digest actual bin
+    [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || { die "$name has no valid repository-pinned SHA-256"; return 2; }
+    tag="v$PIN"; json="$work/release.json"
+    if ! curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 \
+        -H "Accept: application/vnd.github+json" -H "User-Agent: retro-os-fetch-tools" \
+        "https://api.github.com/repos/$REPO/releases/tags/$tag" -o "$json"; then
+        die "$name: pinned GitHub release metadata could not be fetched"; return 1
+    fi
+    if ! info="$(release_asset_info "$json" "$tag" "$ASSET")"; then
+        die "$name: pinned release asset metadata is invalid"; return 2
+    fi
+    url="$(sed -n '1p' <<< "$info")"
+    remote_digest="$(sed -n '2p' <<< "$info")"
+    [[ "$remote_digest" == "sha256:$EXPECTED_SHA256" ]] \
+        || { die "$name: GitHub release digest differs from repository pin"; return 2; }
+    log "$name: downloading $tag/$ASSET"
+    if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 600 -o "$work/$ASSET" "$url"; then
+        die "$name: pinned asset download failed"; return 1
+    fi
+    actual="$(sha256sum "$work/$ASSET" | awk '{print $1}')"
+    [[ "$actual" == "$EXPECTED_SHA256" ]] \
+        || { die "$name: downloaded bytes do not match repository-pinned SHA-256"; return 2; }
+    mkdir -p "$work/unpack"
+    if ! unzip -q "$work/$ASSET" -d "$work/unpack"; then
+        die "$name: release archive extraction failed"; return 1
+    fi
+    bin="$(find "$work/unpack" -type f -name "$BIN" -print -quit)"
+    [[ -n "$bin" && -f "$bin" ]] && is_elf "$bin" \
+        || { die "$name: archive did not contain expected ELF executable"; return 1; }
+    install -D -m 0755 -o root -g root "$bin" "$DEST/.$BIN.new" || return 1
+    mv -f "$DEST/.$BIN.new" "$DEST/$BIN"
+    record_manifest "$name" "$tag" "$ASSET" "$actual" "verified-repository-pin"
+    log "$name: installed $tag (repository-pinned SHA-256 verified)"
+}
 stage_tool() {
-    local name="$1" work json listing tag="" used="" asset_name="" asset_url="" hit status bin_path sha
-    tool_meta "${name}" || { warn "unknown tool: ${name}"; return 2; }
-
-    work="$(mktemp -d)"
-    json="${work}/release.json"
-    listing="${work}/assets.tsv"
-    : > "${listing}"
-
-    if gh_release_json "${REPO}" "${TAG_PREFIX}${PIN}" "${json}" 2>/dev/null; then
-        used="pinned"
+    local name="$1" work="$2"
+    tool_meta "$name" || { warn "unknown tool: $name"; return 2; }
+    if [[ "$METHOD" == cargo ]]; then
+        build_rustscan "$work"; return $?
     fi
-
-    if [[ -n "${used}" ]]; then
-        parse_release "${json}" > "${listing}" || true
-        tag="$(head -n1 "${listing}")"
-        if hit="$(pick_asset "${listing}")"; then
-            asset_name="${hit%%$'\t'*}"
-            asset_url="${hit#*$'\t'}"
-        else
-            warn "${name}: no matching asset in ${used} release ${tag}"
-        fi
-    fi
-
-    if [[ -z "${asset_url}" ]]; then
-        asset_name="${PIN_ASSET//@V@/${PIN}}"
-        tag="${TAG_PREFIX}${PIN}"
-        asset_url="https://github.com/${REPO}/releases/download/${tag}/${asset_name}"
-        used="pinned-direct"
-        warn "${name}: falling back to direct pinned URL"
-        # Load the pinned release's own asset/checksum listing.
-        if gh_release_json "${REPO}" "${tag}" "${json}" 2>/dev/null; then
-            parse_release "${json}" > "${listing}" || true
-            pinned_tag="$(head -n1 "${listing}")"
-            [[ -n "${pinned_tag}" ]] && tag="${pinned_tag}"
-        else
-            : > "${listing}"
-        fi
-    fi
-
-    log "${name}: ${tag} (${used}) <- ${asset_name}"
-    if ! curl_dl -o "${work}/${asset_name}" "${asset_url}"; then
-        warn "${name}: download failed (${asset_url})"
-        rm -rf "${work}"; return 1
-    fi
-
-    status="$(verify_checksum "${work}/${asset_name}" "${asset_name}" "${listing}" "${REPO}")"
-    case "${status}" in
-        verified-attested)
-            ;;
-        MISMATCH)
-            warn "${name}: SHA-256 MISMATCH; refusing this release as potentially compromised"
-            rm -rf "${work}"; return 2
-            ;;
-        *)
-            warn "${name}: integrity could not be authenticated (${status}); skipping this optional binary"
-            rm -rf "${work}"; return 1
-            ;;
-    esac
-
-    extract_archive "${work}/${asset_name}" "${work}/x"
-    bin_path="$(find "${work}/x" -type f -name "${BIN}" | head -n1)"
-    if [[ -z "${bin_path}" ]] && is_elf "${work}/x/${asset_name}" 2>/dev/null; then
-        bin_path="${work}/x/${asset_name}"
-    fi
-    if [[ -z "${bin_path}" ]] || ! is_elf "${bin_path}"; then
-        warn "${name}: no ELF binary named '${BIN}' found in ${asset_name}"
-        rm -rf "${work}"; return 1
-    fi
-
-    install -D -m 0755 -o root -g root "${bin_path}" "${DEST}/.${BIN}.new"
-    mv -f "${DEST}/.${BIN}.new" "${DEST}/${BIN}"
-    sha="$(sha256sum "${DEST}/${BIN}" | awk '{print $1}')"
-    record_manifest "${name}" "${tag}" "${asset_name}" "${sha}" "${status}"
-    log "${name}: installed ${DEST}/${BIN} (checksum: ${status})"
-    rm -rf "${work}"
+    stage_release_binary "$name" "$work"; return $?
 }
-
 main() {
     local -a wanted=()
-    local arg
+    local arg tool rc failed=0 work
     for arg in "$@"; do
-        case "${arg}" in
-            --all)    wanted=("${ALL_TOOLS[@]}") ;;
+        case "$arg" in
+            --all) wanted=("${ALL_TOOLS[@]}") ;;
             --strict) STRICT=1 ;;
             --list)
-                [[ -r "${MANIFEST}" ]] && cat "${MANIFEST}" || echo "no tools staged yet"
-                exit 0 ;;
+                [[ -r "$MANIFEST" ]] && cat "$MANIFEST" || echo "no tools staged yet"
+                return 0 ;;
             -h|--help)
-                echo "usage: retro-fetch-tools {--all | rustscan ffuf httpx naabu} [--strict] | --list"
-                exit 0 ;;
-            *) wanted+=("${arg}") ;;
+                echo "usage: retro-fetch-tools {--all | rustscan httpx naabu} [--strict] | --list"
+                return 0 ;;
+            *) wanted+=("$arg") ;;
         esac
     done
-    [[ ${#wanted[@]} -gt 0 ]] || wanted=("${ALL_TOOLS[@]}")
-
-    local t failed=0 rc
-    for t in "${wanted[@]}"; do
-        if stage_tool "${t}"; then
-            :
+    (( ${#wanted[@]} > 0 )) || wanted=("${ALL_TOOLS[@]}")
+    for tool in "${wanted[@]}"; do
+        work="$(mktemp -d)"
+        if stage_tool "$tool" "$work"; then
+            rm -rf "$work"
         else
-            rc=$?
-            failed=$(( failed + 1 ))
-            record_manifest "${t}" "-" "-" "-" "SKIPPED"
-            # A proven hash mismatch is a security failure, not an optional-tool
-            # availability issue. Never continue after detecting one.
+            rc=$?; failed=$((failed + 1))
+            record_manifest "$tool" "-" "-" "-" "FAILED"
+            rm -rf "$work"
             if (( rc == 2 )); then
-                warn "${t}: security verification failed; stopping tool staging"
-                exit 1
+                warn "$tool: security verification failed; stopping"
+                return 1
             fi
         fi
     done
-
     if (( failed > 0 )); then
-        warn "${failed} requested tool(s) were unavailable or could not be authenticated"
-        if (( STRICT == 1 )); then exit 1; fi
+        warn "$failed tool(s) could not be installed"
+        (( STRICT == 0 )) || return 1
     fi
-    exit 0
+    return 0
 }
-
-main "$@"
-EOF
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
+EOFEOF
 }
 
 stage_modern_tools() {
-    retro_info "Staging required upstream RustScan, ProjectDiscovery httpx and Naabu binaries"
-    if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" rustscan httpx naabu --strict; then
-        retro_die "Required RustScan/httpx/Naabu binaries could not be authenticated and installed"
+    retro_info "Staging RustScan, ProjectDiscovery httpx and Naabu with pinned verification"
+    if ! "${RETRO_HELPER_DIR}/retro-fetch-tools" --all --strict; then
+        retro_die "Required RustScan/httpx/Naabu verification or installation failed"
     fi
-    if ! command -v ffuf >/dev/null 2>&1; then
-        retro_info "ffuf is not available from APT; installing the official ffuf Linux amd64 release"
-        "${RETRO_HELPER_DIR}/retro-fetch-tools" ffuf --strict \
-            || retro_die "ffuf is missing and the official upstream binary could not be verified"
-    else
-        retro_ok "ffuf provided by the Debian APT package"
-    fi
+    command -v ffuf >/dev/null 2>&1 || retro_die "ffuf must be installed from the signed Debian Trixie archive"
+    retro_ok "ffuf provided by the signed Debian APT archive"
     cat "${RETRO_ETC_DIR}/modern-tools.manifest" 2>/dev/null || true
 }
 # -----------------------------------------------------------------------------
