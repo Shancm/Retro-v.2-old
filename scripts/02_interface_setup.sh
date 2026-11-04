@@ -601,7 +601,7 @@ EOF
 
     retro_write /etc/skel/.config/jgmenu/jgmenurc 0644 <<'EOF'
 position_mode = center
-menu_width = 420
+menu_width = 280
 menu_height = 520
 menu_padding = 8
 menu_border = 1
