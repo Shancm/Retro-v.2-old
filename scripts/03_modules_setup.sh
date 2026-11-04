@@ -257,7 +257,7 @@ main() {
     return 0
 }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
-EOFEOF
+EOF
 }
 
 stage_modern_tools() {
