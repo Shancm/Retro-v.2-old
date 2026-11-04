@@ -34,6 +34,27 @@ in_group() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"; }
 no_legacy_password() { ! grep -Eq 'chpasswd|:retro|--unlock' "$1"; }
 dpkg_audit_clean() { [[ -z "$(dpkg --audit)" ]]; }
 
+png_dimensions_valid() {
+    python3 - "$1" <<'PY'
+import struct
+import sys
+
+with open(sys.argv[1], "rb") as image:
+    if image.read(8) != b"\x89PNG\r\n\x1a\n":
+        raise SystemExit("invalid PNG signature")
+    ihdr_len, ihdr_type = struct.unpack(">I4s", image.read(8))
+    if ihdr_len != 13 or ihdr_type != b"IHDR":
+        raise SystemExit("missing or invalid IHDR chunk")
+    dimensions = image.read(8)
+    if len(dimensions) != 8:
+        raise SystemExit("truncated PNG IHDR dimensions")
+    width, height = struct.unpack(">II", dimensions)
+
+if width < 1280 or height < 800:
+    raise SystemExit(f"wallpaper resolution is below 1280x800 ({width}x{height})")
+PY
+}
+
 udev_goto_targets_valid() {
     local rule target
     shopt -s nullglob
@@ -230,7 +251,7 @@ test_home() {
     png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
     png_magic="${png_magic//[[:space:]]/}"
     if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]] &&
-       python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); sig=f.read(8); hdr=f.read(8); w,h=struct.unpack(">II",f.read(8)); depth,ctype=struct.unpack(">BB",f.read(2)); sys.exit(0 if sig==b"\x89PNG\r\n\x1a\n" and hdr==b"\x00\x00\x00\rIHDR" and w>=1280 and h>=800 and depth==8 and ctype in (2,6) else 1)' "${wp}"; then
+       png_dimensions_valid "${wp}"; then
         pass "colorful wallpaper present as a valid >=1280x800 PNG (${wp})"
     else
         fail "colorful wallpaper present as a valid >=1280x800 PNG (${wp})" "generate /usr/share/backgrounds/retro-wallpaper.png in 02_interface_setup.sh"
