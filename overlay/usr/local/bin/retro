@@ -754,8 +754,8 @@ panic_restore() {
     need_root
     say "restoring networking"
     nft delete table inet retro_panic 2>/dev/null || true
-    command -v rfkill >/dev/null 2>&1 && rfkill unblock all || true
-    command -v nmcli >/dev/null 2>&1 && nmcli networking on || true
+    if command -v rfkill >/dev/null 2>&1; then rfkill unblock all || true; fi
+    if command -v nmcli >/dev/null 2>&1; then nmcli networking on || true; fi
     local dev
     for dev in /sys/class/net/*; do
         dev="$(basename "${dev}")"
@@ -778,8 +778,8 @@ table inet retro_panic {
 }
 EOF
     fi
-    command -v rfkill >/dev/null 2>&1 && rfkill block all 2>/dev/null || true
-    command -v nmcli >/dev/null 2>&1 && nmcli networking off 2>/dev/null || true
+    if command -v rfkill >/dev/null 2>&1; then rfkill block all 2>/dev/null || true; fi
+    if command -v nmcli >/dev/null 2>&1; then nmcli networking off 2>/dev/null || true; fi
 
     local dev devpath nft_ok=0 links_ok=1 lock_ok=0 state
     local -a interfaces=()
