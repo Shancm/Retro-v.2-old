@@ -562,7 +562,7 @@ else
     mark XORG_ERRORS "no-log"
 fi
 
-mark WALLPAPER "$([[ -s /usr/share/backgrounds/retro-os/wallpaper.png ]] && echo yes || echo no)"
+mark WALLPAPER "$([[ -s /usr/share/backgrounds/retro-wallpaper.png ]] && echo yes || echo no)"
 mark RETRO_CLI "$(yn retro --version)"
 
 for t in nmap tshark aircrack-ng hydra john nikto sqlmap wifite rustscan ffuf httpx naabu; do
