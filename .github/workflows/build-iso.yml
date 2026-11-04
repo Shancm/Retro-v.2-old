@@ -84,13 +84,15 @@ jobs:
           set -Eeuo pipefail
           bash -n build.sh config.env test_iso.sh scripts/*.sh
           bash -n overlay/usr/local/bin/retro
-          bash -n overlay/usr/local/sbin/retro-usb-maker tests/test_retro_usb_maker.sh
+          bash -n overlay/usr/local/sbin/retro-usb-maker
+          bash -n tests/test_retro_usb_maker.sh
       - name: ShellCheck
         run: |
           set -Eeuo pipefail
           shellcheck -x build.sh config.env test_iso.sh scripts/*.sh
           shellcheck -x overlay/usr/local/bin/retro
-          shellcheck -x overlay/usr/local/sbin/retro-usb-maker tests/test_retro_usb_maker.sh
+          shellcheck -x overlay/usr/local/sbin/retro-usb-maker
+          shellcheck -x tests/test_retro_usb_maker.sh
       - name: YAML lint
         run: yamllint -s .github/workflows
       - name: Python unit tests
