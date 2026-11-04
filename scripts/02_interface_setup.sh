@@ -27,7 +27,7 @@ install_graphical_stack() {
         xserver-xorg-video-nouveau xserver-xorg-input-all x11-xserver-utils \
         lightdm lightdm-gtk-greeter openbox obconf tint2 jgmenu \
         pcmanfm lxterminal feh xarchiver gvfs gvfs-backends \
-        network-manager-gnome bluetooth bluez bluez-tools blueman \
+        network-manager-gnome bluetooth bluez bluez-tools bluez-obexd blueman \
         usb-modeswitch usbmuxd ipheth-utils wireless-tools wpasupplicant \
         firmware-linux-nonfree firmware-realtek firmware-atheros firmware-misc-nonfree \
         pipewire pipewire-pulse wireplumber pavucontrol volumeicon-alsa alsa-utils \
@@ -56,6 +56,15 @@ install_graphical_stack() {
         retro_warn "Applied persistent ALSA udev label compatibility fix in /etc/udev/rules.d"
         udevadm control --reload-rules 2>/dev/null || true
     fi
+
+    # Prevent the optional Evolution address-book plugin from probing EDS
+    # on minimal desktops; OBEX file transfer and phonebook-independent plugins remain.
+    mkdir -p /etc/systemd/user/obex.service.d
+    retro_write /etc/systemd/user/obex.service.d/override.conf 0644 <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/libexec/bluetooth/obexd --noplugin=ebook,mas
+EOF
 
     retro_apt_install_optional \
         xserver-xorg-video-intel xserver-xorg-video-fbdev \
