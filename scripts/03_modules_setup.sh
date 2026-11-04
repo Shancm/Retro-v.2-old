@@ -504,7 +504,14 @@ if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | s
 
 mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
 mark NETWORKMANAGER_ACTIVE "$(systemctl is-active NetworkManager 2>/dev/null || true)"
-mark BLUETOOTH_ACTIVE "$(systemctl is-active bluetooth 2>/dev/null || true)"
+# The unit is deliberately enabled even on headless guests. Start it before
+# reporting so a prior device-presence skip cannot be misreported as healthy.
+if systemctl is-enabled --quiet bluetooth.service 2>/dev/null ||
+   pgrep -x blueman-applet >/dev/null 2>&1; then
+    modprobe hci_vhci 2>/dev/null || true
+    systemctl start bluetooth.service 2>/dev/null || true
+fi
+mark BLUETOOTH_ACTIVE "$(systemctl is-active bluetooth.service 2>/dev/null || true)"
 mark HWPROFILE_ACTIVE "$(systemctl is-active retro-hwprofile 2>/dev/null || true)"
 retro_uid="$(id -u retro 2>/dev/null || true)"
 if [[ -n "${retro_uid}" ]]; then
@@ -575,7 +582,7 @@ EOF
     retro_write /etc/systemd/system/retro-boot-report.service 0644 <<'EOF'
 [Unit]
 Description=Retro OS boot health report (debug/test only: kernel arg retro.report=1)
-After=graphical.target display-manager.service retro-ai-watchdog.service
+After=graphical.target display-manager.service bluetooth.service retro-ai-watchdog.service
 ConditionKernelCommandLine=retro.report=1
 
 [Service]
