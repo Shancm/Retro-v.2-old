@@ -267,6 +267,77 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+
+  report-failure:
+    name: Report build failure
+    if: ${{ always() && (needs.quality.result == 'failure' || needs.build.result == 'failure' || needs.firmware.result == 'failure') }}
+    needs: [quality, build, firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Summarize failed jobs and open a diagnostic issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run ?? {
+              id: context.runId,
+              run_number: context.runNumber,
+              name: context.workflow,
+              head_branch: context.ref.replace('refs/heads/', ''),
+              head_sha: context.sha,
+              html_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              conclusion: 'failure'
+            };
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100
+            });
+            const failed = data.jobs.filter(job =>
+              ['failure', 'timed_out', 'cancelled', 'action_required'].includes(job.conclusion)
+            );
+            const rows = failed.length
+              ? failed.map(job => `- **${job.name}** — ${job.conclusion}; [view job logs](${job.html_url})`).join('\\n')
+              : '- One or more dependent jobs failed; inspect the run summary.';
+            const title = `Retro OS CI failure: run #${context.runNumber} (${context.runId})`;
+            const body = [
+              '## Automated build-failure report',
+              '',
+              `- **Workflow:** ${context.workflow}`,
+              `- **Branch:** ${run.head_branch}`,
+              `- **Commit:** \`${context.sha}\``,
+              `- **Run:** [Open GitHub Actions run](${run.html_url})`,
+              '',
+              '## Failed jobs',
+              rows,
+              '',
+              '## Required handling',
+              'Inspect the first causal error and propose the smallest safe fix. Do not weaken checksum/signature verification, disable tests, hide failures, force-push, or merge PR #8. Do not claim physical hardware tests passed based on CI.',
+              '',
+              '_Automatically generated. This job reports failures; it does not autonomously modify source code._'
+            ].join('\\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100
+            });
+            if (existing.data.some(issue => !issue.pull_request && issue.title === title)) {
+              core.info('A report for this workflow run already exists.');
+              return;
+            }
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body
+            });
+            core.info(`Created failure report: ${issue.data.html_url}`);
+
   release:
     name: Publish ISO release
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
