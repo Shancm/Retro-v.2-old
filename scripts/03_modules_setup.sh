@@ -271,7 +271,12 @@ stage_modern_tools() {
         retro_die "Required RustScan/httpx/Naabu verification or installation failed"
     fi
     command -v ffuf >/dev/null 2>&1 || retro_die "ffuf must be installed from the signed Debian Trixie archive"
-    retro_ok "ffuf provided by the signed Debian APT archive"
+    local ffuf_version
+    ffuf_version="$(dpkg-query -W -f='${Version}' ffuf 2>/dev/null)" \
+        || retro_die "ffuf is not registered as an APT-managed package"
+    [[ "$ffuf_version" == "${RETRO_PIN_FFUF}"* ]] \
+        || retro_die "ffuf version $ffuf_version does not match configured baseline ${RETRO_PIN_FFUF}"
+    retro_ok "ffuf provided by the signed Debian Trixie archive ($ffuf_version)"
     cat "${RETRO_ETC_DIR}/modern-tools.manifest" 2>/dev/null || true
 }
 # -----------------------------------------------------------------------------
