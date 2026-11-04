@@ -7,6 +7,7 @@ Usage: sudo retro-usb-maker --iso FILE.iso --device /dev/sdX
 WARNING: erases the entire selected USB disk. Requires typing the exact device path.
 Creates an ext4 partition labelled "persistence", with /home union in persistence.conf.
 Persistence is NOT encrypted; do not store secrets on a lost/shared USB.
+The .sha256 sidecar detects corruption only; it does NOT authenticate the ISO publisher.
 EOF
 }
 die() { printf 'retro-usb-maker: ERROR: %s\n' "$*" >&2; exit 1; }
@@ -20,7 +21,7 @@ while (($#)); do
   esac
 done
 [[ $EUID -eq 0 ]] || die "run as root"
-[[ -s "$ISO" ]] || die "--iso must name a non-empty file"
+[[ -f "$ISO" && -s "$ISO" ]] || die "--iso must name a non-empty regular file"
 [[ "$DEVICE" == /dev/* && -b "$DEVICE" ]] || die "--device must be a whole-disk block device"
 for cmd in lsblk findmnt sgdisk partprobe udevadm mkfs.ext4 blkid dd sha256sum mount umount blockdev stat numfmt mountpoint; do
   command -v "$cmd" >/dev/null 2>&1 || die "missing required command: $cmd"
@@ -93,6 +94,7 @@ sync
 umount "$mnt"
 rmdir "$mnt"
 trap - EXIT
+[[ "$(blkid -s TYPE -o value "$partition")" == ext4 ]] || die "persistence filesystem type verification failed"
 [[ "$(blkid -s LABEL -o value "$partition")" == persistence ]] || die "persistence label verification failed"
 printf 'SUCCESS: %s labelled persistence; /home union enabled.\n' "$partition"
 printf 'NOTE: persistence is unencrypted. Select the Persistence boot entry on restart.\n'
