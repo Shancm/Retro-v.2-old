@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Safely flash Retro OS and provision a /home-only persistence partition.
+set -Eeuo pipefail
+usage() {
+  cat <<'EOF'
+Usage: sudo retro-usb-maker --iso FILE.iso --device /dev/sdX
+WARNING: erases the entire selected USB disk. Requires typing the exact device path.
+Creates an ext4 partition labelled "persistence" with /home union.
+Persistence is NOT encrypted; do not store secrets on a lost/shared USB.
+EOF
+}
+die() { printf 'retro-usb-maker: ERROR: %s\n' "$*" >&2; exit 1; }
+ISO="" DEVICE=""
+while (($#)); do
+  case "$1" in
+    --iso) ISO=${2:-}; shift 2 ;;
+    --device) DEVICE=${2:-}; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; die "unknown argument: $1" ;;
+  esac
+done
+[[ $EUID -eq 0 ]] || die "run as root"
+[[ -s "$ISO" ]] || die "--iso must name a non-empty file"
+[[ "$DEVICE" == /dev/* && -b "$DEVICE" ]] || die "--device must be a whole-disk block device"
+for cmd in lsblk findmnt sgdisk partprobe udevadm mkfs.ext4 blkid dd sha256sum mount umount blockdev stat numfmt; do
+  command -v "$cmd" >/dev/null 2>&1 || die "missing required command: $cmd"
+done
+[[ "$(lsblk -dnro TYPE "$DEVICE")" == disk ]] || die "target is not a whole disk"
+rm_flag=$(lsblk -dnro RM "$DEVICE" | tr -d ' ')
+transport=$(lsblk -dnro TRAN "$DEVICE" | tr -d ' ')
+[[ "$rm_flag" == 1 || "$transport" == usb ]] || die "target is not identified as removable/USB"
+root_source=$(findmnt -nro SOURCE / || true)
+if [[ -b "$root_source" ]]; then
+  root_parent=$(lsblk -dnro PKNAME "$root_source" | head -n1)
+  [[ "$root_source" != "$DEVICE" && ( -z "$root_parent" || "/dev/$root_parent" != "$DEVICE" ) ]] || die "refusing to overwrite the running system disk"
+fi
+if lsblk -nrpo MOUNTPOINTS "$DEVICE" | grep -q '[^[:space:]]'; then
+  die "target has mounted partitions; unmount them first"
+fi
+if [[ -f "${ISO}.sha256" ]]; then
+  (cd "$(dirname "$ISO")" && sha256sum --status -c "$(basename "$ISO").sha256") || die "ISO checksum mismatch"
+else
+  printf 'WARNING: no .sha256 sidecar; ISO authenticity is not verified.\n' >&2
+fi
+iso_bytes=$(stat -c %s "$ISO")
+disk_bytes=$(blockdev --getsize64 "$DEVICE")
+(( disk_bytes > iso_bytes + 1073741824 )) || die "USB must exceed ISO size by at least 1 GiB"
+printf 'Target: %s (%s)\nISO: %s (%s)\n' "$DEVICE" "$(lsblk -dnro SIZE,MODEL "$DEVICE" | xargs)" "$ISO" "$(numfmt --to=iec "$iso_bytes")"
+printf 'ALL DATA ON %s WILL BE ERASED. Type the exact device path: ' "$DEVICE"
+read -r answer
+[[ "$answer" == "$DEVICE" ]] || die "confirmation mismatch; nothing written"
+dd if="$ISO" of="$DEVICE" bs=4M conv=fsync status=progress
+sync
+udevadm settle
+sgdisk -e "$DEVICE" >/dev/null
+sgdisk -v "$DEVICE" >/dev/null || die "GPT verification failed"
+declare -A used=()
+while IFS= read -r n; do [[ "$n" =~ ^[0-9]+$ ]] && used["$n"]=1; done < <(lsblk -nr -o PARTN "$DEVICE")
+partno=""
+for n in {3..128}; do if [[ -z "${used[$n]:-}" ]]; then partno=$n; break; fi; done
+[[ -n "$partno" ]] || die "no free GPT partition number"
+first=$(sgdisk -F "$DEVICE" 2>/dev/null)
+last=$(sgdisk -E "$DEVICE" 2>/dev/null)
+[[ "$first" =~ ^[0-9]+$ && "$last" =~ ^[0-9]+$ ]] && (( last > first )) || die "no free GPT sectors for persistence"
+sgdisk -n "$partno:0:0" -t "$partno:8300" -c "$partno:persistence" "$DEVICE" >/dev/null
+partprobe "$DEVICE"
+udevadm settle
+partition=""
+for _ in {1..10}; do
+  partition=$(lsblk -nrpo NAME,PARTN "$DEVICE" | awk -v n="$partno" '$2==n {print $1; exit}')
+  [[ -b "$partition" ]] && break
+  sleep 1
+done
+[[ -b "$partition" ]] || die "new partition device did not appear"
+mkfs.ext4 -F -L persistence -m 0 "$partition" >/dev/null
+mnt=$(mktemp -d)
+cleanup() { mountpoint -q "$mnt" && umount "$mnt" || true; rmdir "$mnt" 2>/dev/null || true; }
+trap cleanup EXIT
+mount "$partition" "$mnt"
+printf '/home union\n' > "$mnt/persistence.conf"
+chmod 0644 "$mnt/persistence.conf"
+sync
+umount "$mnt"
+rmdir "$mnt"
+trap - EXIT
+[[ "$(blkid -s LABEL -o value "$partition")" == persistence ]] || die "persistence label verification failed"
+printf 'SUCCESS: %s labelled persistence; /home union enabled.\n' "$partition"
+printf 'NOTE: persistence is unencrypted. Select the Persistence boot entry on restart.\n'
