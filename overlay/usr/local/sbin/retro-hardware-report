@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# Non-destructive hardware/performance report and /home persistence probe.
+set -Eeuo pipefail
+
+PERSISTENCE_ACTION="none"
+case "${1:-}" in
+    --help|-h)
+        cat <<'EOF'
+Usage: retro-hardware-report [--arm-persistence | --check-persistence]
+
+Collects hardware, firmware, memory, boot, network, Bluetooth, audio and
+storage diagnostics into ~/.local/state/retro-os/hardware-report-*.txt.
+
+Run --arm-persistence before reboot, then --check-persistence after reboot.
+The probe is stored in the current user's home directory. Run as the normal
+desktop user (not root) when testing /home persistence. This tool does not
+write to disks other than the user's home directory and its report folder.
+EOF
+        exit 0
+        ;;
+    --arm-persistence) PERSISTENCE_ACTION="arm" ;;
+    --check-persistence) PERSISTENCE_ACTION="check" ;;
+    "") ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+esac
+
+if ((${#} > 1)); then
+    echo "Only one option may be supplied." >&2
+    exit 2
+fi
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/retro-os"
+mkdir -p "$STATE_DIR"
+chmod 0700 "$STATE_DIR"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+REPORT="${STATE_DIR}/hardware-report-${STAMP}.txt"
+MARKER="${HOME}/.retro-os-persistence-probe"
+PERSISTENCE_RC=0
+
+exec > >(tee "$REPORT") 2>&1
+
+section() { printf '\n===== %s =====\n' "$1"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+run_if_available() {
+    local command_name="$1"
+    shift
+    if have "$command_name"; then
+        "$@" 2>&1 || printf '[WARN] %s returned non-zero status\n' "$command_name"
+    else
+        printf '[INFO] %s is not installed\n' "$command_name"
+    fi
+}
+
+printf 'Retro OS hardware report\nGenerated UTC: %s\n' "$STAMP"
+printf 'Report: %s\n' "$REPORT"
+printf 'User: %s (uid %s)\n' "${USER:-unknown}" "$(id -u)"
+printf 'Kernel: %s\n' "$(uname -srmo)"
+
+section "Firmware and boot"
+if [[ -d /sys/firmware/efi ]]; then
+    echo "Firmware mode: UEFI"
+else
+    echo "Firmware mode: BIOS/Legacy (or EFI sysfs unavailable)"
+fi
+printf 'Kernel command line: '
+tr '\n' ' ' < /proc/cmdline
+printf '\n'
+run_if_available systemd-analyze systemd-analyze time
+run_if_available systemd-analyze systemd-analyze blame --no-pager
+
+section "CPU and memory"
+grep -m1 -E '^(model name|Hardware|Processor)[[:space:]]*:' /proc/cpuinfo || true
+printf 'CPU cores: %s\n' "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo unknown)"
+grep -E '^(MemTotal|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo || true
+run_if_available free free -h
+run_if_available vmstat vmstat 1 5
+if [[ -r /sys/block/zram0/mm_stat ]]; then
+    printf 'zram mm_stat: '
+    cat /sys/block/zram0/mm_stat
+    [[ ! -r /sys/block/zram0/comp_algorithm ]] || {
+        printf 'zram algorithms: '
+        cat /sys/block/zram0/comp_algorithm
+    }
+else
+    echo "zram: not present"
+fi
+if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]]; then
+    printf 'CPU governor: '
+    cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+fi
+if have ps; then
+    echo "Top resident processes (KiB):"
+    ps -eo comm,rss --sort=-rss | head -n 12
+fi
+
+section "Storage and persistence mounts"
+run_if_available lsblk lsblk -o NAME,SIZE,TYPE,TRAN,FSTYPE,LABEL,MOUNTPOINTS
+run_if_available findmnt findmnt -rn -o SOURCE,FSTYPE,TARGET
+if findmnt -rn -o TARGET | grep -Fxq /home; then
+    echo "/home is a separate mountpoint"
+else
+    echo "/home is not a separate mountpoint (it may be part of the live overlay)"
+fi
+for candidate in /run/live/persistence /lib/live/mount/persistence /run/live/medium; do
+    if [[ -e "$candidate" ]]; then
+        printf 'Live persistence path present: %s\n' "$candidate"
+        findmnt "$candidate" 2>/dev/null || true
+    fi
+done
+
+section "Network and wireless"
+run_if_available ip ip -brief link
+run_if_available rfkill rfkill list
+run_if_available iw iw dev
+run_if_available nmcli nmcli -t -f DEVICE,TYPE,STATE device status
+
+section "Bluetooth"
+run_if_available bluetoothctl bluetoothctl list
+run_if_available systemctl systemctl --no-pager --full status bluetooth
+
+section "Audio"
+run_if_available aplay aplay -l
+run_if_available pactl pactl list short cards
+run_if_available systemctl systemctl --no-pager --full status pipewire
+run_if_available systemctl systemctl --no-pager --full status pulseaudio
+
+section "Graphics and USB"
+run_if_available lspci lspci -nn
+run_if_available lsusb lsusb
+
+section "Boot and hardware warnings"
+run_if_available journalctl journalctl -k -b -p warning..alert --no-pager -n 80
+
+section "Persistence probe"
+case "$PERSISTENCE_ACTION" in
+    arm)
+        if [[ ! -w "$HOME" ]]; then
+            echo "FAIL: home directory is not writable"
+            PERSISTENCE_RC=1
+        else
+            {
+                printf 'Retro OS persistence probe\n'
+                printf 'Created UTC: %s\n' "$STAMP"
+                printf 'Host: %s\n' "$(hostname)"
+                printf 'User ID: %s\n' "$(id -u)"
+            } > "$MARKER"
+            chmod 0600 "$MARKER"
+            sync
+            echo "ARMED: reboot the same USB system, log in as the same user, then run:"
+            echo "  retro-hardware-report --check-persistence"
+        fi
+        ;;
+    check)
+        if [[ -s "$MARKER" ]] && grep -q '^Retro OS persistence probe$' "$MARKER"; then
+            echo "PASS: persistence marker survived reboot in $HOME"
+            cat "$MARKER"
+        else
+            echo "FAIL: persistence marker is missing or invalid in $HOME"
+            PERSISTENCE_RC=1
+        fi
+        ;;
+    *)
+        echo "Not requested. Use --arm-persistence before reboot and --check-persistence after reboot."
+        ;;
+esac
+
+section "Result"
+printf 'Report saved: %s\n' "$REPORT"
+if (( PERSISTENCE_RC == 0 )); then
+    echo "Hardware report completed."
+else
+    echo "Hardware report completed with persistence probe failure."
+fi
+exit "$PERSISTENCE_RC"
