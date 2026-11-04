@@ -198,7 +198,7 @@ stage_release_binary() {
         die "$name: downloaded bytes do not match repository-pinned SHA-256"
         return 2
     fi
-    actual="$(sha256sum "$work/$ASSET" | awk '{print $1}')
+    actual="$(sha256sum "$work/$ASSET" | awk '{print $1}')"
     mkdir -p "$work/unpack"
     if ! unzip -q "$work/$ASSET" -d "$work/unpack"; then
         die "$name: release archive extraction failed"; return 1
