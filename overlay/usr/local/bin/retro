@@ -304,7 +304,12 @@ cmd_share() {
     done
     [[ -n "${file}" ]] || die "usage: retro share <file>"
     [[ -f "${file}" && -r "${file}" ]] || die "not a readable regular file: ${file} (tip: tar -czf x.tgz <dir> first)"
-    [[ "${port}" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || die "invalid port: ${port}"
+    if [[ ! "${port}" =~ ^[0-9]{1,5}$ ]]; then
+        die "invalid port: ${port}"
+    fi
+    if (( 10#${port} < 1 || 10#${port} > 65535 )); then
+        die "invalid port: ${port}"
+    fi
     command -v python3 >/dev/null 2>&1 || die "python3 is required"
     command -v qrencode >/dev/null 2>&1 || warn "qrencode not found - the URL will be shown without a QR code"
 
@@ -703,7 +708,11 @@ cmd_update() {
     if [[ -n "${tu}" ]]; then
         home="$(getent passwd "${tu}" | cut -d: -f6)"
         runuser -u "${tu}" -- "${HELPER_DIR}/retro-menu-gen" --user "${home}" || warn "user menu regeneration failed"
-        user_gui openbox --reconfigure 2>/dev/null && ok "Openbox reconfigured" || say "Openbox not reachable (menus apply at next login)"
+        if user_gui openbox --reconfigure 2>/dev/null; then
+            ok "Openbox reconfigured"
+        else
+            say "Openbox not reachable (menus apply at next login)"
+        fi
     fi
     ok "retro update finished"
 }
