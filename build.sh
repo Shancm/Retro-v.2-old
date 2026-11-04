@@ -313,64 +313,56 @@ preflight_syntax() {
 }
 
 seed_wallpaper() {
-    local wp="${OVERLAY_DIR}/usr/share/backgrounds/retro-os/wallpaper.png"
+    local wp="${OVERLAY_DIR}/usr/share/backgrounds/retro-wallpaper.png"
     if [[ -s "${wp}" ]]; then
-        retro_ok "wallpaper present: overlay/usr/share/backgrounds/retro-os/wallpaper.png"
+        retro_ok "colorful wallpaper present: overlay/usr/share/backgrounds/retro-wallpaper.png"
         return 0
     fi
-    pf_warn "wallpaper.png missing - seeding a generated fallback (drop your art at ${wp} to replace it)"
+    pf_warn "retro-wallpaper.png missing - generating a 1280x800 colorful gradient"
     mkdir -p "$(dirname "${wp}")"
-
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "${wp}" <<'PY'
+    if ! command -v python3 >/dev/null 2>&1; then
+        retro_die "python3 is required to generate the Retro OS wallpaper"
+    fi
+    python3 - ""${wp}"" <<'PY'
 import struct
 import sys
 import zlib
 
-W, H = 1920, 1080
-TOP, BOTTOM = (12, 13, 18), (20, 26, 40)
-GRID, DIM_MINT, MINT = (22, 28, 38), (0, 110, 70), (0, 255, 156)
-LINE_Y = int(H * 0.62)
-
+W, H = 1280, 800
+STOPS = [(0.00, (35, 145, 220)), (0.34, (20, 190, 175)),
+         (0.67, (125, 92, 205)), (1.00, (245, 145, 72))]
 
 def chunk(tag, data):
     body = tag + data
-    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xffffffff)
 
+def color_at(t, y):
+    for i in range(len(STOPS) - 1):
+        p0, c0 = STOPS[i]
+        p1, c1 = STOPS[i + 1]
+        if t <= p1:
+            q = (t - p0) / (p1 - p0)
+            break
+    else:
+        q, c0, c1 = 1.0, STOPS[-2][1], STOPS[-1][1]
+    lift = int(18 * (1.0 - y / (H - 1)))
+    return tuple(max(1, min(255, int(c0[k] + (c1[k] - c0[k]) * q) + lift)) for k in range(3))
 
 raw = bytearray()
 for y in range(H):
-    t = y / (H - 1)
-    base = bytes(int(TOP[i] + (BOTTOM[i] - TOP[i]) * t) for i in range(3))
-    row = bytearray(base * W)
-    if y % 72 == 0:
-        row[:] = bytes(GRID) * W
-    else:
-        for x in range(0, W, 72):
-            row[x * 3:x * 3 + 3] = bytes(GRID)
-    if abs(y - LINE_Y) <= 1:
-        row[:] = bytes(DIM_MINT) * W
-        for x in range(int(W * 0.38), int(W * 0.62)):
-            row[x * 3:x * 3 + 3] = bytes(MINT)
     raw.append(0)
-    raw.extend(row)
-
+    for x in range(W):
+        raw.extend(color_at(x / (W - 1), y))
 png = (b"\x89PNG\r\n\x1a\n"
        + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
-       + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+       + chunk(b"IDAT", zlib.compress(bytes(raw), 7))
        + chunk(b"IEND", b""))
 with open(sys.argv[1], "wb") as fh:
     fh.write(png)
 PY
-    else
-        # 1x1 obsidian pixel; wallpaper_mode=stretch turns it into a solid backdrop
-        base64 -d > "${wp}" <<'EOF'
-iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mPg4RUCAABUACzr1UKwAAAAAElFTkSuQmCC
-EOF
-    fi
-    [[ -s "${wp}" ]] || retro_die "could not seed fallback wallpaper at ${wp}"
-    [[ "$(head -c4 "${wp}" | od -An -tx1 | tr -d ' \n')" == "89504e47" ]] || retro_die "seeded wallpaper is not a valid PNG"
-    retro_ok "seeded fallback wallpaper ($(stat -c %s "${wp}") bytes)"
+    [[ -s "${wp}" ]] || retro_die "could not generate wallpaper at ${wp}"
+    [[ "$(head -c4 "${wp}" | od -An -tx1 | tr -d ' \n')" == "89504e47" ]] || retro_die "generated wallpaper is not a valid PNG"
+    retro_ok "generated 1280x800 colorful wallpaper ($(stat -c %s "${wp}") bytes)"
 }
 
 preflight_assets() {
