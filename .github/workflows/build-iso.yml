@@ -103,6 +103,8 @@ jobs:
         run: bash tests/test_selftest_helpers.sh
       - name: USB persistence provisioner interface tests
         run: bash tests/test_retro_usb_maker.sh
+      - name: Modern tool verification helper tests
+        run: bash tests/test_retro_tools.sh
 
   build:
     name: Build hybrid BIOS/UEFI ISO
