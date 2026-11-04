@@ -68,7 +68,7 @@ EOF
 }
 
 load_profile() {
-    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_PICOM="?" RETRO_ZRAM_STATE="?"
+    RETRO_TIER="unknown" RETRO_RAM_MB="?" RETRO_CPUS="?" RETRO_PICOM="?"
     # shellcheck source=/dev/null
     [[ -r "${PROFILE_ENV}" ]] && source "${PROFILE_ENV}"
     return 0
