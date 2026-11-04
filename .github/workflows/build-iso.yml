@@ -270,7 +270,11 @@ jobs:
 
   report-failure:
     name: Report build failure
-    if: ${{ always() && (needs.quality.result == 'failure' || needs.build.result == 'failure' || needs.firmware.result == 'failure') }}
+    if: >-
+      ${{ always() &&
+          (needs.quality.result == 'failure' ||
+           needs.build.result == 'failure' ||
+           needs.firmware.result == 'failure') }}
     needs: [quality, build, firmware]
     runs-on: ubuntu-latest
     permissions:
@@ -288,7 +292,8 @@ jobs:
               name: context.workflow,
               head_branch: context.ref.replace('refs/heads/', ''),
               head_sha: context.sha,
-              html_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              html_url: 'https://github.com/' + context.repo.owner + '/' +
+                context.repo.repo + '/actions/runs/' + context.runId,
               conclusion: 'failure'
             };
             const { data } = await github.rest.actions.listJobsForWorkflowRun({
@@ -297,13 +302,18 @@ jobs:
               run_id: context.runId,
               per_page: 100
             });
-            const failed = data.jobs.filter(job =>
-              ['failure', 'timed_out', 'cancelled', 'action_required'].includes(job.conclusion)
-            );
+            const failed = data.jobs.filter(job => {
+              const bad = ['failure', 'timed_out', 'cancelled',
+                'action_required'];
+              return bad.includes(job.conclusion);
+            });
             const rows = failed.length
-              ? failed.map(job => `- **${job.name}** — ${job.conclusion}; [view job logs](${job.html_url})`).join('\\n')
+              ? failed.map(job =>
+                  `- **${job.name}** — ${job.conclusion}; ` +
+                  `[view job logs](${job.html_url})`).join('\\n')
               : '- One or more dependent jobs failed; inspect the run summary.';
-            const title = `Retro OS CI failure: run #${context.runNumber} (${context.runId})`;
+            const title = 'Retro OS CI failure: run #' + context.runNumber +
+              ' (' + context.runId + ')';
             const body = [
               '## Automated build-failure report',
               '',
@@ -316,9 +326,13 @@ jobs:
               rows,
               '',
               '## Required handling',
-              'Inspect the first causal error and propose the smallest safe fix. Do not weaken checksum/signature verification, disable tests, hide failures, force-push, or merge PR #8. Do not claim physical hardware tests passed based on CI.',
+              'Inspect the first causal error and propose the smallest safe fix. ' +
+              'Do not weaken checksum/signature verification, disable tests, ' +
+              'hide failures, force-push, or merge PR #8. Do not claim physical ' +
+              'hardware tests passed based on CI.', 
               '',
-              '_Automatically generated. This job reports failures; it does not autonomously modify source code._'
+              '_Automatically generated. This job reports failures; it does ' +
+              'not autonomously modify source code._'
             ].join('\\n');
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -326,7 +340,10 @@ jobs:
               state: 'all',
               per_page: 100
             });
-            if (existing.data.some(issue => !issue.pull_request && issue.title === title)) {
+            const duplicate = existing.data.some(issue => {
+              return !issue.pull_request && issue.title === title;
+            });
+            if (duplicate) {
               core.info('A report for this workflow run already exists.');
               return;
             }
