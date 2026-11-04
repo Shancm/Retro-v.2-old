@@ -328,7 +328,8 @@ jobs:
               '## Required handling',
               'Inspect the first causal error and propose the smallest safe ' +
               'fix. Do not weaken checksum/signature verification, disable ' +
-              'tests, hide failures, force-push, or merge PR #8. Do not claim ' +
+              'tests, hide failures, force-push, or merge PR #8. ' +
+              'Do not claim ' +
               'physical hardware tests passed based on CI.',
               '',
               '_Automatically generated. This job reports failures; it does ' +
