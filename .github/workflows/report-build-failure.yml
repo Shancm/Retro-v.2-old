@@ -84,7 +84,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title,
-              body,
-              labels: ['ci-failure']
+              body
             });
             core.info(`Created failure report: ${issue.data.html_url}`);
