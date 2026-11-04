@@ -244,6 +244,8 @@ test_home() {
         grep -q 'modprobe hci_vhci' /usr/local/sbin/retro-hwprofile
     check "Bluetooth service override clears hardware conditions" "install bluetooth.service.d/override.conf" \
         bash -c "grep -qx 'ConditionPathIsDirectory=' /etc/systemd/system/bluetooth.service.d/override.conf && grep -qx 'ConditionKernelModule=' /etc/systemd/system/bluetooth.service.d/override.conf"
+    check "Bluetooth daemon starts on normal boot without a controller" "add bluetooth.service to multi-user.target" \
+        test -L /etc/systemd/system/multi-user.target.wants/bluetooth.service
     check "OBEX Evolution plugins disabled" "install obex.service.d override with --noplugin=ebook,mas" \
         grep -q '^ExecStart=/usr/libexec/bluetooth/obexd --noplugin=ebook,mas$' /etc/systemd/user/obex.service.d/override.conf
 
