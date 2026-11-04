@@ -7,6 +7,7 @@
 #
 #   --bios / --uefi   firmware under test (default: both)
 #   --low  / --std    768 MiB (low tier) / 2048 MiB (standard tier) guest
+#   --ram-mb N        run each selected firmware with exactly N MiB of RAM
 #                     default: BIOS -> low, UEFI -> std
 #   --report          boot with retro.report=1 + serial console, parse the
 #                     markers printed by retro-boot-report and print a scorecard
@@ -35,6 +36,7 @@ OPT_KVM=1
 OPT_QUIET=0
 OPT_KEEP=0
 TIMEOUT_OVERRIDE=""
+RAM_OVERRIDE=""
 
 REPORT_ARGS="retro.report=1 console=tty0 console=ttyS0,115200n8 loglevel=6 systemd.show_status=1"
 
@@ -75,6 +77,7 @@ parse_args() {
             --quiet)   OPT_QUIET=1 ;;
             --keep)    OPT_KEEP=1 ;;
             --timeout) TIMEOUT_OVERRIDE="${2:-}"; shift ;;
+            --ram-mb)  RAM_OVERRIDE="${2:-}"; shift ;;
             -h|--help) usage; exit 0 ;;
             -*)        usage >&2; die "unknown option: $1" ;;
             *)         ISO_PATH="$1" ;;
@@ -84,6 +87,11 @@ parse_args() {
     if (( ! WANT_BIOS && ! WANT_UEFI )); then WANT_BIOS=1; WANT_UEFI=1; fi
     if [[ -n "${TIMEOUT_OVERRIDE}" && ! "${TIMEOUT_OVERRIDE}" =~ ^[0-9]+$ ]]; then
         die "--timeout needs a number of seconds"
+    fi
+    if [[ -n "${RAM_OVERRIDE}" ]]; then
+        [[ "${RAM_OVERRIDE}" =~ ^[0-9]+$ ]] || die "--ram-mb needs an integer MiB value"
+        (( RAM_OVERRIDE >= 512 && RAM_OVERRIDE <= 16384 )) || die "--ram-mb must be between 512 and 16384 MiB"
+        (( ! WANT_LOW && ! WANT_STD )) || die "--ram-mb cannot be combined with --low or --std"
     fi
 }
 
@@ -598,7 +606,11 @@ main() {
     for mode in bios uefi; do
         if [[ "${mode}" == "bios" && ${WANT_BIOS} -eq 0 ]]; then continue; fi
         if [[ "${mode}" == "uefi" && ${WANT_UEFI} -eq 0 ]]; then continue; fi
-        if (( ! WANT_LOW && ! WANT_STD )); then
+        if [[ -n "${RAM_OVERRIDE}" ]]; then
+            local expected_tier=standard
+            (( RAM_OVERRIDE <= RETRO_LOW_TIER_MAX_MB )) && expected_tier=low
+            runs+=("${mode}:${RAM_OVERRIDE}:${expected_tier}")
+        elif (( ! WANT_LOW && ! WANT_STD )); then
             if [[ "${mode}" == "bios" ]]; then runs+=("bios:768:low"); else runs+=("uefi:2048:standard"); fi
         else
             (( WANT_LOW )) && runs+=("${mode}:768:low")
