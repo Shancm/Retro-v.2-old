@@ -400,33 +400,6 @@ main() {
     summary
 }
 
-main "$@"
- /etc/systemd/system/retro-live-credentials.service
-    check "live-session password is retro" "set retro-live-credentials password to retro only behind boot=live" grep -Fq "password='retro'" "${RETRO_HELPER_DIR}/retro-live-credentials"
-    check "live credential helper prints login instructions" "print the temporary live username and password to tty1" grep -Fq "Password: %s\\n" "${RETRO_HELPER_DIR}/retro-live-credentials"
-    check "timezone is Asia/Kolkata" "set RETRO_TIMEZONE=Asia/Kolkata in config.env" grep -qx "Asia/Kolkata" /etc/timezone
-    check "localtime uses Asia/Kolkata zoneinfo" "link /etc/localtime to /usr/share/zoneinfo/Asia/Kolkata" test "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Kolkata"
-    check "automatic network time synchronization enabled" "enable systemd-timesyncd.service" systemctl is-enabled --quiet systemd-timesyncd.service
-    check "India NTP servers configured" "write /etc/systemd/timesyncd.conf.d/20-retro-ntp.conf" grep -q '^NTP=0.in.pool.ntp.org' /etc/systemd/timesyncd.conf.d/20-retro-ntp.conf
-    check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" no_legacy_password "${RETRO_HELPER_DIR}/retro-live-fixup"
-    check "default target = graphical" "systemctl set-default graphical.target" \
-        test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
-             "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/usr/lib/systemd/system/graphical.target"
-    check "display-manager.service -> lightdm" "systemctl enable lightdm.service" bash -c 'readlink /etc/systemd/system/display-manager.service | grep -q lightdm'
-    check "Xwrapper.config" "restore /opt/retro-os/templates/Xwrapper.config" test -s /etc/X11/Xwrapper.config
-
-    for base in /etc/skel "${HOME_DIR}"; do
-        check "${base}/.config/openbox/autostart exists" "re-run 02_interface_setup.sh write_skel_session" test -x "${base}/.config/openbox/autostart"
-        check "${base}/.config/openbox/rc.xml exists" "re-run 02_interface_setup.sh write_skel_session" test -s "${base}/.config/openbox/rc.xml"
-    done
-
-    local unit
-    for unit in lightdm bluetooth retro-live-fixup retro-live-credentials retro-hwprofile earlyoom NetworkManager retro-ai-watchdog retro-boot-report; do
-        check "unit enabled: ${unit}" "systemctl enable ${unit}.service" systemctl is-enabled --quiet "${unit}.service"
-    done
-}
-
-# -----------------------------------------------------------------------------
 # 3. Home / skeleton ownership and X11 desktop configs
 # -----------------------------------------------------------------------------
 test_home() {
