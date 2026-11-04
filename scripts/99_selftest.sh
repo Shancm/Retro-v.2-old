@@ -361,8 +361,8 @@ test_tuning() {
     check "autogroup sysctl" "restore /etc/sysctl.d/99-retro-desktop.conf" \
         grep -q "kernel.sched_autogroup_enabled = 1" /etc/sysctl.d/99-retro-desktop.conf
     check "tcp_bbr in modules-load" "restore /etc/modules-load.d/retro-net.conf" grep -q "^tcp_bbr" /etc/modules-load.d/retro-net.conf
-    check "hwprofile low-tier zstd/75%" "RETRO_LOW_ZRAM_PCT / RETRO_ZRAM_ALGO in config.env" \
-        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_ZRAM_ALGO=\"zstd\"' ${RETRO_ETC_DIR}/retro.conf"
+    check "hwprofile low-tier lz4/75%" "RETRO_LOW_ZRAM_PCT / RETRO_LOW_ZRAM_ALGO in config.env" \
+        bash -c "grep -q 'RETRO_LOW_ZRAM_PCT=\"75\"' ${RETRO_ETC_DIR}/retro.conf && grep -q 'RETRO_LOW_ZRAM_ALGO=\"lz4\"' ${RETRO_ETC_DIR}/retro.conf"
     check "low-tier earlyoom -m 4 -s 8" "RETRO_LOW_EARLYOOM_ARGS in config.env" \
         grep -q "RETRO_LOW_EARLYOOM_ARGS=\"-m 4 -s 8\"" "${RETRO_ETC_DIR}/retro.conf"
     check "retro-ai.conf" "03_modules_setup.sh install_retro_ai" test -s "${RETRO_ETC_DIR}/retro-ai.conf"
