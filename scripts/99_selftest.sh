@@ -230,7 +230,7 @@ test_home() {
     png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
     png_magic="${png_magic//[[:space:]]/}"
     if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]] &&
-       python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); f.read(8); w,h=struct.unpack(">II",f.read(8)); sys.exit(0 if w>=1280 and h>=800 else 1)' "${wp}"; then
+       python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); sig=f.read(8); hdr=f.read(8); w,h=struct.unpack(">II",f.read(8)); depth,ctype=struct.unpack(">BB",f.read(2)); sys.exit(0 if sig==b"\x89PNG\r\n\x1a\n" and hdr==b"\x00\x00\x00\rIHDR" and w>=1280 and h>=800 and depth==8 and ctype in (2,6) else 1)' "${wp}"; then
         pass "colorful wallpaper present as a valid >=1280x800 PNG (${wp})"
     else
         fail "colorful wallpaper present as a valid >=1280x800 PNG (${wp})" "generate /usr/share/backgrounds/retro-wallpaper.png in 02_interface_setup.sh"
