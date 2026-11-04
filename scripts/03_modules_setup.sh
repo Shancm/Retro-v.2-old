@@ -498,12 +498,6 @@ mark EARLYOOM_ARGS "$(sed -n 's/^EARLYOOM_ARGS=//p' /etc/default/earlyoom 2>/dev
 mark EARLYOOM_ACTIVE "$(systemctl is-active earlyoom 2>/dev/null || true)"
 mark BBR "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)"
 
-failed="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
-mark FAILED_UNITS "${failed}"
-if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/RETRO_DETAIL: failed-unit /'; fi
-
-mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
-mark NETWORKMANAGER_ACTIVE "$(systemctl is-active NetworkManager 2>/dev/null || true)"
 # The unit is deliberately enabled even on headless guests. Start it before
 # reporting so a prior device-presence skip cannot be misreported as healthy.
 if systemctl is-enabled --quiet bluetooth.service 2>/dev/null ||
@@ -511,6 +505,12 @@ if systemctl is-enabled --quiet bluetooth.service 2>/dev/null ||
     modprobe hci_vhci 2>/dev/null || true
     systemctl start bluetooth.service 2>/dev/null || true
 fi
+failed="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
+mark FAILED_UNITS "${failed}"
+if (( failed > 0 )); then systemctl --failed --no-legend --plain 2>/dev/null | sed 's/^/RETRO_DETAIL: failed-unit /'; fi
+
+mark LIGHTDM_ACTIVE "$(systemctl is-active lightdm 2>/dev/null || true)"
+mark NETWORKMANAGER_ACTIVE "$(systemctl is-active NetworkManager 2>/dev/null || true)"
 mark BLUETOOTH_ACTIVE "$(systemctl is-active bluetooth.service 2>/dev/null || true)"
 mark HWPROFILE_ACTIVE "$(systemctl is-active retro-hwprofile 2>/dev/null || true)"
 retro_uid="$(id -u retro 2>/dev/null || true)"
