@@ -267,14 +267,17 @@ set -Eeuo pipefail
 grep -qw 'boot=live' /proc/cmdline || exit 0
 id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
 
-password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-[[ "${#password}" -eq 48 ]] || { echo "credential generation failed" >&2; exit 1; }
+# This well-known password is deliberately limited to boot=live sessions.
+# The installed system image keeps the retro account locked; Calamares asks
+# the installer to create a private password for an installed system.
+password='retro'
 printf 'retro:%s\n' "${password}" | chpasswd
 passwd --unlock retro >/dev/null
 {
     printf '\n\nRetro OS temporary live-session login\n'
     printf 'Username: retro\n'
     printf 'Password: %s\n' "${password}"
+    printf 'WARNING: live-session password is public: retro\n'
     printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
 } > /dev/tty1
 unset password
