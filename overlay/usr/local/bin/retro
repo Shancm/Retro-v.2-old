@@ -664,7 +664,7 @@ cmd_update() {
         say "4/5 refreshing modern Go/Rust tools"
         "${HELPER_DIR}/retro-fetch-tools" --all || warn "some tools could not be refreshed"
     else
-        say "4/5 modern tools unchanged (use --tools to refresh RustScan/ffuf/httpx/naabu)"
+        say "4/5 modern tools unchanged (use --tools to refresh RustScan/httpx/naabu; ffuf updates through apt)"
     fi
 
     say "5/5 regenerating menus"
