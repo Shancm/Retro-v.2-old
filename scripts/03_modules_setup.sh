@@ -69,7 +69,7 @@ RETRO_PIN_NAABU="${RETRO_PIN_NAABU}"
 RETRO_PIN_NAABU_SHA256="${RETRO_PIN_NAABU_SHA256}"
 EOF
 
-    retro_write "\${RETRO_HELPER_DIR}/retro-fetch-tools" 0755 <<'EOF'
+    retro_write "${RETRO_HELPER_DIR}/retro-fetch-tools" 0755 <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 CONF="/etc/retro-os/tools.conf"
@@ -95,19 +95,21 @@ record_manifest() {
 cleanup_build_deps() {
     if (( ${#BUILD_DEPS_TO_PURGE[@]} > 0 )); then
         apt-get purge -y "${BUILD_DEPS_TO_PURGE[@]}" >/dev/null 2>&1 || true
-        apt-get autoremove --purge -y >/dev/null 2>&1 || true
     fi
 }
 trap cleanup_build_deps EXIT
 
 ensure_cargo() {
-    local pkg status
-    for pkg in cargo rustc build-essential; do
-        status="$(dpkg-query -W -f='${db:Status-Status}' "$pkg" 2>/dev/null || true)"
-        [[ "$status" == installed ]] || BUILD_DEPS_TO_PURGE+=("$pkg")
-    done
-    apt-get update -qq || return 1
-    apt-get install -y --no-install-recommends cargo rustc build-essential || return 1
+    local before after install_rc=0
+    before="$(mktemp)"
+    after="$(mktemp)"
+    dpkg-query -W -f='${binary:Package}\n' | sort > "$before"
+    apt-get update -qq || { rm -f "$before" "$after"; return 1; }
+    apt-get install -y --no-install-recommends cargo rustc build-essential || install_rc=$?
+    dpkg-query -W -f='${binary:Package}\n' | sort > "$after"
+    mapfile -t BUILD_DEPS_TO_PURGE < <(comm -13 "$before" "$after")
+    rm -f "$before" "$after"
+    (( install_rc == 0 )) || return 1
     command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1
 }
 tool_meta() {
