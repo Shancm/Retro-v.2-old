@@ -91,8 +91,12 @@ jobs:
           set -Eeuo pipefail
           shellcheck -x build.sh config.env test_iso.sh scripts/*.sh
           shellcheck -x overlay/usr/local/bin/retro
-          shellcheck -x overlay/usr/local/sbin/retro-usb-maker overlay/usr/local/sbin/retro-hardware-report
-          shellcheck -x tests/test_retro_usb_maker.sh tests/test_retro_hardware_report.sh
+          shellcheck -x \
+            overlay/usr/local/sbin/retro-usb-maker \
+            overlay/usr/local/sbin/retro-hardware-report
+          shellcheck -x \
+            tests/test_retro_usb_maker.sh \
+            tests/test_retro_hardware_report.sh
       - name: YAML lint
         run: yamllint -s .github/workflows
       - name: Python unit tests
