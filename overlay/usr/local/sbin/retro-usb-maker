@@ -37,6 +37,9 @@ if lsblk -nrpo MOUNTPOINTS "$DEVICE" | grep -q '[^[:space:]]'; then
   die "target has mounted partitions; unmount them first"
 fi
 [[ -f "${ISO}.sha256" ]] || die "a matching .sha256 sidecar is required"
+[[ "$(wc -l < "${ISO}.sha256")" -eq 1 ]] || die "ISO checksum sidecar must contain exactly one line"
+sidecar_name="$(awk 'NR == 1 {print $2}' "${ISO}.sha256")"
+[[ "$sidecar_name" == "$(basename "$ISO")" ]] || die "ISO checksum sidecar names a different file"
 (cd "$(dirname "$ISO")" && sha256sum --status -c "$(basename "$ISO").sha256") || die "ISO checksum mismatch"
 iso_bytes=$(stat -c %s "$ISO")
 disk_bytes=$(blockdev --getsize64 "$DEVICE")
@@ -57,10 +60,14 @@ for n in {3..128}; do if [[ -z "${used[$n]:-}" ]]; then partno=$n; break; fi; do
 [[ -n "$partno" ]] || die "no free GPT partition number"
 first=$(sgdisk -F "$DEVICE" 2>/dev/null)
 last=$(sgdisk -E "$DEVICE" 2>/dev/null)
-if [[ ! "$first" =~ ^[0-9]+$ || ! "$last" =~ ^[0-9]+$ ]] || (( last - first + 1 < 2097152 )); then
+sector_size=$(blockdev --getss "$DEVICE")
+[[ "$sector_size" =~ ^[0-9]+$ ]] && (( sector_size > 0 )) || die "could not determine USB logical sector size"
+required_sectors=$(( (1073741824 + sector_size - 1) / sector_size ))
+if [[ ! "$first" =~ ^[0-9]+$ || ! "$last" =~ ^[0-9]+$ ]] || (( last - first + 1 < required_sectors )); then
   die "at least 1 GiB of contiguous free GPT space is required"
 fi
-sgdisk -n "$partno:0:0" -t "$partno:8300" -c "$partno:persistence" "$DEVICE" >/dev/null
+sgdisk -n "$partno:$first:$last" -t "$partno:8300" -c "$partno:persistence" "$DEVICE" >/dev/null
+sgdisk -v "$DEVICE" >/dev/null || die "GPT verification failed after persistence partition creation"
 partprobe "$DEVICE"
 udevadm settle
 partition=""
