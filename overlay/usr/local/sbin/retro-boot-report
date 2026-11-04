@@ -105,7 +105,7 @@ emit SWAPPINESS "$(sysctl -n vm.swappiness 2>/dev/null || echo unknown)"
 emit BBR "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
 system_state="$(systemctl is-system-running 2>/dev/null || true)"
 emit SYSTEM_STATE "${system_state:-unknown}"
-failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null | awk 'NF {n++} END {print n+0}')"
+failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null | awk 'NF {n++} END {print n+0}' || true)"
 emit FAILED_UNITS "${failed_units:-0}"
 
 if command -v retro >/dev/null 2>&1; then emit RETRO_CLI yes; else emit RETRO_CLI no; fi
