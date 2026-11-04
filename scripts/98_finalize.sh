@@ -128,7 +128,9 @@ fix_helper_permissions() {
     chmod 0755 "${RETRO_BIN_DIR}/retro" "${RETRO_AI_DIR}/retro_ai.py" 2>/dev/null || true
     chmod 0750 "${RETRO_HELPER_DIR}/retro-live-fixup" "${RETRO_HELPER_DIR}/retro-live-credentials" "${RETRO_HELPER_DIR}/retro-live-credentials"
     chmod 0755 /usr/local/sbin/retro-hwprofile
+    chmod 0755 /usr/local/sbin/retro-boot-report
     [[ ! -f /usr/local/sbin/retro-hardware-report ]] || chmod 0755 /usr/local/sbin/retro-hardware-report
+    systemctl enable retro-boot-report.service
 }
 
 rebuild_initramfs() {
