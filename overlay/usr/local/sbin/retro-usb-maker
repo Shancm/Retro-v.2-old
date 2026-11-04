@@ -22,7 +22,7 @@ done
 [[ $EUID -eq 0 ]] || die "run as root"
 [[ -s "$ISO" ]] || die "--iso must name a non-empty file"
 [[ "$DEVICE" == /dev/* && -b "$DEVICE" ]] || die "--device must be a whole-disk block device"
-for cmd in lsblk findmnt sgdisk partprobe udevadm mkfs.ext4 blkid dd sha256sum mount umount blockdev stat numfmt; do
+for cmd in lsblk findmnt sgdisk partprobe udevadm mkfs.ext4 blkid dd sha256sum mount umount blockdev stat numfmt mountpoint; do
   command -v "$cmd" >/dev/null 2>&1 || die "missing required command: $cmd"
 done
 [[ "$(lsblk -dnro TYPE "$DEVICE")" == disk ]] || die "target is not a whole disk"
@@ -30,9 +30,8 @@ rm_flag=$(lsblk -dnro RM "$DEVICE" | tr -d ' ')
 transport=$(lsblk -dnro TRAN "$DEVICE" | tr -d ' ')
 [[ "$rm_flag" == 1 || "$transport" == usb ]] || die "target is not identified as removable/USB"
 root_source=$(findmnt -nro SOURCE / || true)
-if [[ -b "$root_source" ]]; then
-  root_parent=$(lsblk -dnro PKNAME "$root_source" | head -n1)
-  [[ "$root_source" != "$DEVICE" && ( -z "$root_parent" || "/dev/$root_parent" != "$DEVICE" ) ]] || die "refusing to overwrite the running system disk"
+if [[ -b "$root_source" ]] && lsblk -snpo NAME "$root_source" | grep -Fxq "$DEVICE"; then
+  die "refusing to overwrite the disk containing the running root filesystem"
 fi
 if lsblk -nrpo MOUNTPOINTS "$DEVICE" | grep -q '[^[:space:]]'; then
   die "target has mounted partitions; unmount them first"
