@@ -416,6 +416,13 @@ evaluate_run() {   # <clean-log> <expected-tier> <reason> <screen-stats-file>
 
     printf '\n%s  Supporting checks (advisory)%s\n' "${T_D}" "${T_0}"
     adv_check "Wallpaper installed"   "WALLPAPER=${KV[WALLPAPER]:-n/a}"           "yes"    "$([[ "${KV[WALLPAPER]:-}" == "yes" ]] && echo 1 || echo 0)"
+    adv_check "ZRAM size" "ZRAM_SIZE_MB=${KV[ZRAM_SIZE_MB]:-n/a}" ">=512 MiB" "$([[ "${KV[ZRAM_SIZE_MB]:-0}" =~ ^[0-9]+$ && "${KV[ZRAM_SIZE_MB]:-0}" -ge 512 ]] && echo 1 || echo 0)"
+    if [[ "${tier}" == "low" ]]; then
+        adv_check "Low-tier ZRAM algorithm" "ZRAM_ALGO=${KV[ZRAM_ALGO]:-n/a}" "lz4" "$([[ "${KV[ZRAM_ALGO]:-}" == "lz4" ]] && echo 1 || echo 0)"
+    fi
+    if [[ "${KV[RAM_MB]:-0}" =~ ^[0-9]+$ ]] && (( ${KV[RAM_MB]:-0} >= 1000 )); then
+        adv_check "Available memory" "MEM_AVAILABLE_MB=${KV[MEM_AVAILABLE_MB]:-n/a}" ">=550 MiB" "$([[ "${KV[MEM_AVAILABLE_MB]:-0}" =~ ^[0-9]+$ && "${KV[MEM_AVAILABLE_MB]:-0}" -ge 550 ]] && echo 1 || echo 0)"
+    fi
     req_check "EarlyOOM active"       "EARLYOOM_ACTIVE=${KV[EARLYOOM_ACTIVE]:-n/a}" "active" "$([[ "${KV[EARLYOOM_ACTIVE]:-}" == "active" ]] && echo 1 || echo 0)"
     if [[ "${tier}" == "low" ]]; then
         req_check "EarlyOOM thresholds"  "${KV[EARLYOOM_ARGS]:-n/a}" "-m 4 -s 8" "$([[ "${KV[EARLYOOM_ARGS]:-}" == "-m 4 -s 8"* ]] && echo 1 || echo 0)"
