@@ -323,7 +323,7 @@ seed_wallpaper() {
     if ! command -v python3 >/dev/null 2>&1; then
         retro_die "python3 is required to generate the Retro OS wallpaper"
     fi
-    python3 - ""${wp}"" <<'PY'
+    python3 - "${wp}" <<'PY'
 import struct
 import sys
 import zlib
