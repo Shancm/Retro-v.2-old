@@ -444,6 +444,8 @@ EOT
 cmd="${1:-apply}"
 case "${cmd}" in
     apply|start)
+        # Keep the BlueZ daemon startable on headless/QEMU guests without a physical adapter.
+        modprobe hci_vhci 2>/dev/null || true
         detect
         log "tier=${TIER} (${REASON}) ram=${RAM_MB}MiB cpus=${CPUS} desktop=openbox"
         apply_zram
@@ -506,6 +508,15 @@ EOF
     systemctl enable retro-hwprofile.service
     systemctl enable earlyoom.service
     systemctl enable NetworkManager.service
+    # Clear BlueZ's hardware-presence conditions so bluetoothd remains active
+    # even when a QEMU guest has no emulated USB Bluetooth controller.
+    mkdir -p /etc/systemd/system/bluetooth.service.d
+    retro_write /etc/systemd/system/bluetooth.service.d/override.conf 0644 <<'EOF'
+[Unit]
+ConditionPathIsDirectory=
+ConditionKernelModule=
+EOF
+    systemctl daemon-reload
     systemctl enable bluetooth.service
 }
 
