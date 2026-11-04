@@ -224,13 +224,13 @@ test_home() {
         grep -q '^ExecStart=/usr/libexec/bluetooth/obexd --noplugin=ebook,mas$' /etc/systemd/user/obex.service.d/override.conf
 
     wp="/usr/share/backgrounds/retro-wallpaper.png"
-    png_magic="$(head -c4 "$${wp}" 2>/dev/null | od -An -tx1)"
+    png_magic="$(head -c4 "${wp}" 2>/dev/null | od -An -tx1)"
     png_magic="${png_magic//[[:space:]]/}"
-    if [[ -s "$${wp}" && "$${png_magic}" == "89504e47" ]] &&
-       python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); f.read(8); w,h=struct.unpack(">II",f.read(8)); sys.exit(0 if w>=1280 and h>=800 else 1)' "$${wp}"; then
-        pass "colorful wallpaper present as a valid >=1280x800 PNG ($${wp})"
+    if [[ -s "${wp}" && "${png_magic}" == "89504e47" ]] &&
+       python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); f.read(8); w,h=struct.unpack(">II",f.read(8)); sys.exit(0 if w>=1280 and h>=800 else 1)' "${wp}"; then
+        pass "colorful wallpaper present as a valid >=1280x800 PNG (${wp})"
     else
-        fail "colorful wallpaper present as a valid >=1280x800 PNG ($${wp})" "generate /usr/share/backgrounds/retro-wallpaper.png in 02_interface_setup.sh"
+        fail "colorful wallpaper present as a valid >=1280x800 PNG (${wp})" "generate /usr/share/backgrounds/retro-wallpaper.png in 02_interface_setup.sh"
     fi
 }
 
