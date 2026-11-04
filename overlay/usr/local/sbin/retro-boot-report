@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Emit the serial-console health scorecard consumed by test_iso.sh --report.
+set -Eeuo pipefail
+
+PROFILE="/run/retro-os/profile.env"
+EARLYOOM_CONF="/etc/default/earlyoom"
+TAG="retro-boot-report"
+
+emit() { printf 'RETRO_TEST: %s=%s\n' "$1" "$2"; }
+detail() { printf 'RETRO_DETAIL: %s\n' "$*"; }
+active_state() {
+    local value
+    value="$(systemctl is-active "$1" 2>/dev/null || true)"
+    printf '%s' "${value:-inactive}"
+}
+process_state() {
+    if pgrep -x "$1" >/dev/null 2>&1; then printf yes; else printf no; fi
+}
+installed_state() {
+    if command -v "$1" >/dev/null 2>&1; then printf yes; else printf no; fi
+}
+profile_value() {
+    local key="$1"
+    if [[ -r "$PROFILE" ]]; then
+        sed -n "s/^${key}=//p" "$PROFILE" | tail -n1
+    fi
+}
+
+printf '%s\n' 'RETRO_REPORT_BEGIN'
+logger -t "$TAG" "collecting report-mode boot scorecard" 2>/dev/null || true
+
+# Give LightDM time to autologin the report-only live session.
+for _ in {1..180}; do
+    if [[ "$(process_state Xorg)" == yes &&
+          "$(process_state openbox)" == yes &&
+          "$(process_state tint2)" == yes &&
+          -S /tmp/.X11-unix/X0 ]]; then
+        break
+    fi
+    sleep 1
+done
+
+lightdm_restarts="$(systemctl show lightdm.service -p NRestarts --value 2>/dev/null || true)"
+[[ "$lightdm_restarts" =~ ^[0-9]+$ ]] || lightdm_restarts=0
+if (( lightdm_restarts > 1 )); then login_loop=1; else login_loop=0; fi
+
+emit LOGIN_LOOP_SUSPECT "$login_loop"
+emit LIGHTDM_ACTIVE "$(active_state lightdm.service)"
+emit NETWORKMANAGER_ACTIVE "$(active_state NetworkManager.service)"
+emit BLUETOOTH_ACTIVE "$(active_state bluetooth.service)"
+emit HWPROFILE_ACTIVE "$(active_state retro-hwprofile.service)"
+emit OPENBOX_RUNNING "$(process_state openbox)"
+emit TINT2_RUNNING "$(process_state tint2)"
+emit XORG_RUNNING "$(process_state Xorg)"
+if [[ -S /tmp/.X11-unix/X0 ]]; then
+    emit X11_SOCKET yes
+    emit DISPLAY :0
+else
+    emit X11_SOCKET no
+    emit DISPLAY none
+fi
+emit JGMENU_INSTALLED "$(installed_state jgmenu_run)"
+emit LXTERMINAL_INSTALLED "$(installed_state lxterminal)"
+
+for pair in \
+    pcmanfm:PROC_pcmanfm \
+    nm-applet:PROC_nm_applet \
+    blueman-applet:PROC_blueman_applet \
+    volumeicon:PROC_volumeicon; do
+    command_name="${pair%%:*}"
+    key="${pair#*:}"
+    emit "$key" "$(process_state "$command_name")"
+done
+
+tier="$(profile_value RETRO_TIER)"
+ram_mb="$(profile_value RETRO_RAM_MB)"
+emit TIER "${tier:-unknown}"
+emit RAM_MB "${ram_mb:-0}"
+
+if swapon --noheadings --show=NAME 2>/dev/null | grep -Fxq /dev/zram0; then
+    emit ZRAM 1
+else
+    emit ZRAM 0
+fi
+if [[ -r /sys/block/zram0/disksize ]]; then
+    zram_bytes="$(cat /sys/block/zram0/disksize)"
+    [[ "$zram_bytes" =~ ^[0-9]+$ ]] || zram_bytes=0
+    emit ZRAM_SIZE_MB "$((zram_bytes / 1024 / 1024))"
+else
+    emit ZRAM_SIZE_MB 0
+fi
+zram_algo="$(profile_value RETRO_ZRAM_ALGO)"
+emit ZRAM_ALGO "${zram_algo:-n/a}"
+mem_available_kb="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo)"
+[[ "$mem_available_kb" =~ ^[0-9]+$ ]] || mem_available_kb=0
+emit MEM_AVAILABLE_MB "$((mem_available_kb / 1024))"
+
+emit EARLYOOM_ACTIVE "$(active_state earlyoom.service)"
+earlyoom_args=""
+if [[ -r "$EARLYOOM_CONF" ]]; then
+    earlyoom_args="$(sed -n 's/^EARLYOOM_ARGS=["'\'']\{0,1\}\(.*\)["'\'']\{0,1\}$/\1/p' "$EARLYOOM_CONF" | tail -n1)"
+fi
+emit EARLYOOM_ARGS "$earlyoom_args"
+emit SWAPPINESS "$(sysctl -n vm.swappiness 2>/dev/null || echo unknown)"
+emit BBR "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+system_state="$(systemctl is-system-running 2>/dev/null || true)"
+emit SYSTEM_STATE "${system_state:-unknown}"
+failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null | awk 'NF {n++} END {print n+0}')"
+emit FAILED_UNITS "${failed_units:-0}"
+
+if command -v retro >/dev/null 2>&1; then emit RETRO_CLI yes; else emit RETRO_CLI no; fi
+if [[ -s /usr/share/backgrounds/retro-wallpaper.png ]]; then emit WALLPAPER yes; else emit WALLPAPER no; fi
+
+for pair in \
+    nmap:nmap \
+    tshark:tshark \
+    aircrack-ng:aircrack-ng \
+    hydra:hydra \
+    john:john \
+    nikto:nikto \
+    sqlmap:sqlmap \
+    wifite:wifite \
+    rustscan:rustscan \
+    ffuf:ffuf \
+    httpx:httpx \
+    naabu:naabu; do
+    key="${pair%%:*}"
+    command_name="${pair#*:}"
+    if command -v "$command_name" >/dev/null 2>&1; then
+        emit "TOOL_${key^^}" ok
+    else
+        emit "TOOL_${key^^}" missing
+        detail "required security tool is missing: ${command_name}"
+    fi
+done
+
+printf '%s\n' 'RETRO_REPORT_DONE'
+logger -t "$TAG" "boot scorecard complete" 2>/dev/null || true
