@@ -70,7 +70,10 @@ done
 [[ -b "$partition" ]] || die "new partition device did not appear"
 mkfs.ext4 -F -L persistence -m 0 "$partition" >/dev/null
 mnt=$(mktemp -d)
-cleanup() { mountpoint -q "$mnt" && umount "$mnt" || true; rmdir "$mnt" 2>/dev/null || true; }
+cleanup() {
+  if mountpoint -q "$mnt"; then umount "$mnt" || true; fi
+  rmdir "$mnt" 2>/dev/null || true
+}
 trap cleanup EXIT
 mount "$partition" "$mnt"
 printf '/home union\n' > "$mnt/persistence.conf"
