@@ -48,14 +48,17 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install quality tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          apt-get update
+          apt-get install -y --no-install-recommends \
             shellcheck yamllint python3 python3-venv
       - name: Check executable scripts
         run: |
