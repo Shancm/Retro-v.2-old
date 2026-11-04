@@ -80,12 +80,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash -n build.sh config.env test_iso.sh scripts/*.sh
-          bash -n overlay/usr/local/bin/retro
+          bash -n overlay/usr/local/bin/retro overlay/usr/local/sbin/retro-usb-maker tests/test_retro_usb_maker.sh
       - name: ShellCheck
         run: |
           set -Eeuo pipefail
           shellcheck -x build.sh config.env test_iso.sh scripts/*.sh
-          shellcheck -x overlay/usr/local/bin/retro
+          shellcheck -x overlay/usr/local/bin/retro overlay/usr/local/sbin/retro-usb-maker tests/test_retro_usb_maker.sh
       - name: YAML lint
         run: yamllint -s .github/workflows
       - name: Python unit tests
@@ -94,6 +94,8 @@ jobs:
         run: bash tests/test_retro_update.sh
       - name: Self-test helper regression tests
         run: bash tests/test_selftest_helpers.sh
+      - name: USB persistence provisioner interface tests
+        run: bash tests/test_retro_usb_maker.sh
 
   build:
     name: Build hybrid BIOS/UEFI ISO
