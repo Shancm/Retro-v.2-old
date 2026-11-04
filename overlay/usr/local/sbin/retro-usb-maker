@@ -57,7 +57,9 @@ for n in {3..128}; do if [[ -z "${used[$n]:-}" ]]; then partno=$n; break; fi; do
 [[ -n "$partno" ]] || die "no free GPT partition number"
 first=$(sgdisk -F "$DEVICE" 2>/dev/null)
 last=$(sgdisk -E "$DEVICE" 2>/dev/null)
-[[ "$first" =~ ^[0-9]+$ && "$last" =~ ^[0-9]+$ ]] && (( last - first + 1 >= 2097152 )) || die "at least 1 GiB of contiguous free GPT space is required"
+if [[ ! "$first" =~ ^[0-9]+$ || ! "$last" =~ ^[0-9]+$ ]] || (( last - first + 1 < 2097152 )); then
+  die "at least 1 GiB of contiguous free GPT space is required"
+fi
 sgdisk -n "$partno:0:0" -t "$partno:8300" -c "$partno:persistence" "$DEVICE" >/dev/null
 partprobe "$DEVICE"
 udevadm settle
