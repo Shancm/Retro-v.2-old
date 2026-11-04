@@ -73,7 +73,10 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 CONF="/etc/retro-os/tools.conf"
-[[ -r "$CONF" ]] && source "$CONF"
+if [[ -r "$CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONF"
+fi
 STRICT="${RETRO_TOOLS_STRICT:-1}"
 DEST="${RETRO_TOOLS_DEST:-/usr/local/bin}"
 MANIFEST="${RETRO_TOOLS_MANIFEST:-/etc/retro-os/modern-tools.manifest}"
@@ -204,8 +207,10 @@ stage_release_binary() {
         die "$name: release archive extraction failed"; return 1
     fi
     bin="$(find "$work/unpack" -type f -name "$BIN" -print -quit)"
-    [[ -n "$bin" && -f "$bin" ]] && is_elf "$bin" \
-        || { die "$name: archive did not contain expected ELF executable"; return 1; }
+    if [[ -z "$bin" || ! -f "$bin" ]] || ! is_elf "$bin"; then
+        die "$name: archive did not contain expected ELF executable"
+        return 1
+    fi
     install -D -m 0755 -o root -g root "$bin" "$DEST/.$BIN.new" || return 1
     mv -f "$DEST/.$BIN.new" "$DEST/$BIN"
     record_manifest "$name" "$tag" "$ASSET" "$actual" "verified-repository-pin"
