@@ -529,6 +529,9 @@ ConditionKernelModule=
 EOF
     systemctl daemon-reload
     systemctl enable bluetooth.service
+    # BlueZ normally starts through bluetooth.target only when a controller appears.
+    # Also pull bluetoothd into the normal boot so headless/QEMU boots are testable.
+    systemctl add-wants multi-user.target bluetooth.service
 }
 
 # -----------------------------------------------------------------------------
