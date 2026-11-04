@@ -46,6 +46,8 @@ jobs:
   quality:
     name: Static checks and unit tests
     runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
     timeout-minutes: 20
     steps:
       - name: Checkout repository
@@ -101,7 +103,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: debian:bookworm
+      image: debian:trixie
       options: --privileged
     defaults:
       run:
@@ -199,7 +201,7 @@ jobs:
       matrix:
         firmware: [bios, uefi]
     container:
-      image: debian:bookworm
+      image: debian:trixie
     defaults:
       run:
         shell: bash
@@ -228,10 +230,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [[ "${{ matrix.firmware }}" == "bios" ]]; then
-            bash ./test_iso.sh --bios --low --report --no-kvm \
+            bash ./test_iso.sh --bios --ram-mb 1024 --report --no-kvm \
               --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           else
-            bash ./test_iso.sh --uefi --low --report --no-kvm \
+            bash ./test_iso.sh --uefi --ram-mb 1024 --report --no-kvm \
               --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           fi
       - name: Upload firmware test logs
