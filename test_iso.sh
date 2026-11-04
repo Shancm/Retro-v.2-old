@@ -467,8 +467,8 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
 
     if (( OPT_USB )); then
         info "attaching the ISO as a USB disk (isohybrid test)"
-        q+=(-drive "if=none,id=stick,format=raw,readonly=on,file=${iso}" -device qemu-xhci,id=xhci
-            -device "qemu-xhci,id=xhci" -device "usb-storage,bus=xhci.0,drive=stick,bootindex=1"
+        q+=(-drive "if=none,id=stick,format=raw,readonly=on,file=${iso}"
+            -device "qemu-xhci,id=xhci" -device "usb-storage,bus=xhci.0,drive=stick,bootindex=1")
     elif [[ "${mode}" == "bios" ]]; then
         q+=(-cdrom "${iso}" -boot d)
     else
