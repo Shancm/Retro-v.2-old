@@ -85,6 +85,8 @@ jobs:
           bash -n build.sh config.env test_iso.sh scripts/*.sh
           bash -n overlay/usr/local/bin/retro
           bash -n overlay/usr/local/sbin/retro-usb-maker
+          bash -n overlay/usr/local/sbin/retro-hardware-report
+          bash -n overlay/usr/local/sbin/retro-boot-report
           bash -n tests/test_retro_usb_maker.sh
       - name: ShellCheck
         run: |
@@ -93,7 +95,8 @@ jobs:
           shellcheck -x overlay/usr/local/bin/retro
           shellcheck -x \
             overlay/usr/local/sbin/retro-usb-maker \
-            overlay/usr/local/sbin/retro-hardware-report
+            overlay/usr/local/sbin/retro-hardware-report \
+            overlay/usr/local/sbin/retro-boot-report
           shellcheck -x \
             tests/test_retro_usb_maker.sh \
             tests/test_retro_hardware_report.sh
