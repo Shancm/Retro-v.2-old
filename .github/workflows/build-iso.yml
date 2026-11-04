@@ -241,7 +241,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [[ "${{ matrix.firmware }}" == "bios" ]]; then
-            bash ./test_iso.sh --bios --ram-mb 1024 --report --no-kvm \
+            bash ./test_iso.sh --bios --ram-mb 1024 --report --no-kvm --usb \
               --timeout 600 "$BUILD_ROOT/out/retro-os-v2.0-amd64.iso"
           else
             bash ./test_iso.sh --uefi --ram-mb 1024 --report --no-kvm \
