@@ -16,7 +16,7 @@ export DEBIAN_FRONTEND=noninteractive LC_ALL=C LANG=C
 
 SKEL="/etc/skel"
 TEMPLATE_DIR="${RETRO_ROOT}/templates"
-WALLPAPER="/usr/share/backgrounds/retro-os/wallpaper.png"
+WALLPAPER="/usr/share/backgrounds/retro-wallpaper.png"
 
 install_graphical_stack() {
     retro_info "Installing lightweight X11 desktop, Bluetooth, network and audio packages"
@@ -68,44 +68,45 @@ install_graphical_stack() {
 
 install_branding_assets() {
     retro_info "Installing Retro OS X11 branding and Openbox session"
-    mkdir -p /usr/share/backgrounds/retro-os /usr/share/pixmaps /usr/share/xsessions /usr/share/applications /usr/share/retro-os
-    python3 - <<'PY'
-import binascii
-import math
+    mkdir -p /usr/share/backgrounds /usr/share/pixmaps /usr/share/xsessions /usr/share/applications /usr/share/retro-os
+    python3 - "/usr/share/backgrounds/retro-wallpaper.png" <<'PY'
 import struct
+import sys
 import zlib
 
-width, height = 1280, 720
-rows = []
-for y in range(height):
-    row = bytearray((0,))
-    for x in range(width):
-        glow = max(0.0, 1.0 - math.sqrt(((x - width * 0.72) / (width * 0.9)) ** 2 +
-                                       ((y - height * 0.32) / (height * 0.9)) ** 2))
-        r = int(8 + 5 * glow)
-        g = int(12 + 13 * glow)
-        b = int(22 + 17 * glow)
-        if x % 80 == 0 or y % 80 == 0:
-            r = min(255, r + 2)
-            g = min(255, g + 18)
-            b = min(255, b + 10)
-        if abs(y - int(height * 0.78)) < 2:
-            g = min(255, g + 12)
-        row.extend((r, g, b))
-    rows.append(bytes(row))
+W, H = 1280, 800
+STOPS = [(0.00, (35, 145, 220)), (0.34, (20, 190, 175)),
+         (0.67, (125, 92, 205)), (1.00, (245, 145, 72))]
 
-def chunk(kind, data):
-    body = kind + data
-    return struct.pack(">I", len(data)) + body + struct.pack(">I", binascii.crc32(body) & 0xffffffff)
+def chunk(tag, data):
+    body = tag + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xffffffff)
 
-png = (b"\x89PNG\r\n\x1a\n" +
-       chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
-       chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) +
-       chunk(b"IEND", b""))
-with open("/usr/share/backgrounds/retro-os/wallpaper.png", "wb") as image:
-    image.write(png)
+def color_at(t, y):
+    for i in range(len(STOPS) - 1):
+        p0, c0 = STOPS[i]
+        p1, c1 = STOPS[i + 1]
+        if t <= p1:
+            q = (t - p0) / (p1 - p0)
+            break
+    else:
+        q, c0, c1 = 1.0, STOPS[-2][1], STOPS[-1][1]
+    lift = int(18 * (1.0 - y / (H - 1)))
+    return tuple(max(1, min(255, int(c0[k] + (c1[k] - c0[k]) * q) + lift)) for k in range(3))
+
+raw = bytearray()
+for y in range(H):
+    raw.append(0)
+    for x in range(W):
+        raw.extend(color_at(x / (W - 1), y))
+png = (b"\x89PNG\r\n\x1a\n"
+       + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+       + chunk(b"IDAT", zlib.compress(bytes(raw), 7))
+       + chunk(b"IEND", b""))
+with open(sys.argv[1], "wb") as fh:
+    fh.write(png)
 PY
-    chmod 0644 /usr/share/backgrounds/retro-os/wallpaper.png
+    chmod 0644 /usr/share/backgrounds/retro-wallpaper.png
     retro_write /usr/share/pixmaps/retro-start.svg 0644 <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs><radialGradient id="g" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7dffd0"/><stop offset=".55" stop-color="#00ff9c"/><stop offset="1" stop-color="#007a4c"/></radialGradient></defs>
@@ -459,18 +460,37 @@ write_skel_session() {
 </openbox_config>
 EOF
 
-    retro_write /etc/skel/.config/openbox/autostart 0755 <<'EOF'
+    local autostart
+    for autostart in /etc/skel/.config/openbox/autostart /etc/xdg/openbox/autostart; do
+        mkdir -p "$(dirname "${autostart}")"
+        retro_write "${autostart}" 0755 <<'EOF'
 #!/bin/sh
-feh --bg-fill /usr/share/backgrounds/retro-os/wallpaper.png &
+xset s off -dpms s noblank &
+feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png &
 pcmanfm --desktop &
 tint2 &
 nm-applet &
 blueman-applet &
 volumeicon &
+(sleep 2 && pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch) &
 if [ -x /usr/libexec/polkit-mate-authentication-agent-1 ]; then
     /usr/libexec/polkit-mate-authentication-agent-1 &
 fi
 EOF
+    done
+
+    local pcmanfm_conf
+    for pcmanfm_conf in /etc/skel/.config/pcmanfm/default/desktop-items-0.conf /etc/xdg/pcmanfm/default/desktop-items-0.conf; do
+        mkdir -p "$(dirname "${pcmanfm_conf}")"
+        retro_write "${pcmanfm_conf}" 0644 <<'EOF'
+[*]
+wallpaper_mode=stretch
+wallpapers_configured=1
+wallpaper=/usr/share/backgrounds/retro-wallpaper.png
+desktop_bg=#1e3a5f
+desktop_fg=#ffffff
+EOF
+    done
 
     retro_write /etc/skel/.config/tint2/tint2rc 0644 <<'EOF'
 # Background 1: panel
