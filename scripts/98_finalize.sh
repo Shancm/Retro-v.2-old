@@ -20,6 +20,72 @@ export DEBIAN_FRONTEND=noninteractive LC_ALL=C LANG=C
 
 HOME_DIR="/home/${RETRO_USER}"
 
+ensure_retro_wallpaper() {
+    local wallpaper="/usr/share/backgrounds/retro-wallpaper.png"
+    retro_info "Ensuring the live desktop wallpaper exists before self-test"
+    mkdir -p "$(dirname "${wallpaper}")"
+
+    # Re-create the asset in the final chroot if an earlier stage or overlay
+    # did not leave it in place. Keep this finalizer authoritative.
+    if ! python3 - "${wallpaper}" <<'PY'
+import os
+import struct
+import sys
+import zlib
+
+path = sys.argv[1]
+width, height = 1280, 800
+stops = [(0.00, (35, 145, 220)), (0.34, (20, 190, 175)),
+         (0.67, (125, 92, 205)), (1.00, (245, 145, 72))]
+
+def png_chunk(kind, data):
+    body = kind + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xffffffff)
+
+def pixel_at(x, y):
+    t = x / (width - 1)
+    for index in range(len(stops) - 1):
+        p0, c0 = stops[index]
+        p1, c1 = stops[index + 1]
+        if t <= p1:
+            ratio = (t - p0) / (p1 - p0)
+            break
+    else:
+        ratio, c0, c1 = 1.0, stops[-2][1], stops[-1][1]
+    lift = int(18 * (1.0 - y / (height - 1)))
+    return bytes(max(1, min(255, int(c0[i] + (c1[i] - c0[i]) * ratio) + lift)) for i in range(3))
+
+raw = bytearray()
+for y in range(height):
+    raw.append(0)
+    for x in range(width):
+        raw.extend(pixel_at(x, y))
+
+png = (b"\x89PNG\r\n\x1a\n"
+       + png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+       + png_chunk(b"IDAT", zlib.compress(bytes(raw), 7))
+       + png_chunk(b"IEND", b""))
+with open(path, "wb") as output:
+    output.write(png)
+os.chmod(path, 0o644)
+PY
+    then
+        retro_die "could not generate Retro OS wallpaper at ${wallpaper}"
+    fi
+
+    python3 - "${wallpaper}" <<'PY'
+import struct
+import sys
+with open(sys.argv[1], "rb") as image:
+    if image.read(8) != b"\x89PNG\r\n\x1a\n":
+        raise SystemExit("invalid PNG signature")
+    width, height = struct.unpack(">II", image.read(8))
+if width < 1280 or height < 800:
+    raise SystemExit("wallpaper resolution is below 1280x800")
+PY
+    retro_ok "final wallpaper verified: ${wallpaper} (1280x800)"
+}
+
 sync_home_from_skel() {
     retro_info "Syncing /etc/skel into ${HOME_DIR}"
     [[ -d "${HOME_DIR}" ]] || retro_die "${HOME_DIR} does not exist - 01_engine_setup.sh did not create the user"
@@ -102,6 +168,7 @@ cleanup_chroot() {
 
 main() {
     retro_info "=== 98_finalize.sh: start ==="
+    ensure_retro_wallpaper
     sync_home_from_skel
     fix_helper_permissions
     rebuild_initramfs
