@@ -129,6 +129,13 @@ tool_meta() {
 is_elf() {
     [[ "$(head -c4 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "7f454c46" ]]
 }
+
+verify_pinned_sha256() {
+    local file="$1" expected="$2" actual
+    [[ -s "$file" && "$expected" =~ ^[0-9a-f]{64}$ ]] || return 2
+    actual="$(sha256sum "$file" | awk '{print $1}')"
+    [[ "$actual" == "$expected" ]]
+}
 build_rustscan() {
     local work="$1" bin
     ensure_cargo || { die "could not install temporary Rust build dependencies"; return 1; }
@@ -187,9 +194,11 @@ stage_release_binary() {
     if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 600 -o "$work/$ASSET" "$url"; then
         die "$name: pinned asset download failed"; return 1
     fi
-    actual="$(sha256sum "$work/$ASSET" | awk '{print $1}')"
-    [[ "$actual" == "$EXPECTED_SHA256" ]] \
-        || { die "$name: downloaded bytes do not match repository-pinned SHA-256"; return 2; }
+    if ! verify_pinned_sha256 "$work/$ASSET" "$EXPECTED_SHA256"; then
+        die "$name: downloaded bytes do not match repository-pinned SHA-256"
+        return 2
+    fi
+    actual="$(sha256sum "$work/$ASSET" | awk '{print $1}')
     mkdir -p "$work/unpack"
     if ! unzip -q "$work/$ASSET" -d "$work/unpack"; then
         die "$name: release archive extraction failed"; return 1
