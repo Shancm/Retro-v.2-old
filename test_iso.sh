@@ -522,7 +522,6 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
         fi
         qemu_monitor "${sock}" "quit" 1 || true
     fi
-    local i
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         kill -0 "${qpid}" 2>/dev/null || break
         sleep 1
