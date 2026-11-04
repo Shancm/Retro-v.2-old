@@ -179,7 +179,13 @@ test_login_stack() {
     check "live fixup scopes autologin to report mode" "keep autologin behind retro.report=1" grep -A7 -B1 -q "retro.report=1" "${RETRO_HELPER_DIR}/retro-live-fixup"
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
-    check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q '^ConditionKernelCommandLine=boot=live
+    check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q "^ConditionKernelCommandLine=boot=live$" /etc/systemd/system/retro-live-credentials.service
+    check "live-session password is retro" "set retro-live-credentials password to retro only behind boot=live" grep -Fq "password=\x27retro\x27" "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "live credential helper prints login instructions" "print the temporary live username and password to tty1" grep -Fq "Password: %s" "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "timezone is Asia/Kolkata" "set RETRO_TIMEZONE=Asia/Kolkata in config.env" grep -qx "Asia/Kolkata" /etc/timezone
+    check "localtime uses Asia/Kolkata zoneinfo" "link /etc/localtime to /usr/share/zoneinfo/Asia/Kolkata" test "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Kolkata"
+    check "automatic network time synchronization enabled" "enable systemd-timesyncd.service" systemctl is-enabled --quiet systemd-timesyncd.service
+    check "India NTP servers configured" "write /etc/systemd/timesyncd.conf.d/20-retro-ntp.conf" grep -q "^NTP=0.in.pool.ntp.org" /etc/systemd/timesyncd.conf.d/20-retro-ntp.conf
     check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" no_legacy_password "${RETRO_HELPER_DIR}/retro-live-fixup"
     check "default target = graphical" "systemctl set-default graphical.target" \
         test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
