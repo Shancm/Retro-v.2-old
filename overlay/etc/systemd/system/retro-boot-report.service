@@ -1,0 +1,14 @@
+[Unit]
+Description=Retro OS report-mode boot health scorecard
+After=display-manager.service retro-hwprofile.service earlyoom.service
+ConditionKernelCommandLine=retro.report=1
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/retro-boot-report
+TimeoutStartSec=240
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=graphical.target
