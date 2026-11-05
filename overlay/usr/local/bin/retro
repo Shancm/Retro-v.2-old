@@ -193,7 +193,7 @@ start_log() {   # <name>
         mkdir -p /var/log/retro-os || die "cannot create /var/log/retro-os"
         MINT="" CRIM="" CYAN="" DIM="" BOLD="" RST=""
         export NO_COLOR=1
-        exec > >(sed -u -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' | tee -a "${logfile}") 2>&1
+        exec > >(sed -u -E 's/\\x1B\\[[0-?]*[- /]*[@-~]//g' | tee -a "${logfile}") 2>&1
         trap 'sync -f "${logfile}" 2>/dev/null || true' EXIT
     fi
 }
