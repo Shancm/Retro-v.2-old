@@ -180,7 +180,7 @@ test_login_stack() {
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
     check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q "^ConditionKernelCommandLine=boot=live$" /etc/systemd/system/retro-live-credentials.service
-    check "live-session password is retro" "set retro-live-credentials password to retro only behind boot=live" grep -Fq "password='retro'" "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "live-session password is generated randomly" "generate a fresh random password at live boot; never hardcode it" grep -Eq 'password=.*od -An -N18 -tx1 /dev/urandom' "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential helper prints login instructions" "print the temporary live username and password to tty1" grep -Fq "Password: %s" "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "timezone is Asia/Kolkata" "set RETRO_TIMEZONE=Asia/Kolkata in config.env" grep -qx "Asia/Kolkata" /etc/timezone
     check "localtime uses Asia/Kolkata zoneinfo" "link /etc/localtime to /usr/share/zoneinfo/Asia/Kolkata" test "$(readlink /etc/localtime)" = "/usr/share/zoneinfo/Asia/Kolkata"
