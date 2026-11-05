@@ -193,7 +193,9 @@ start_log() {   # <name>
         mkdir -p /var/log/retro-os || die "cannot create /var/log/retro-os"
         MINT="" CRIM="" CYAN="" DIM="" BOLD="" RST=""
         export NO_COLOR=1
-        exec > >(sed -u -E 's/\\033\\[[0-9;?]*[A-Za-z]//g' | tee -a "${logfile}") 2>&1
+        local esc
+        esc="$(printf '\\033')"
+        exec > >(sed -u -E "s/${esc}\\\\[[0-9;?]*[A-Za-z]//g" | tee -a "${logfile}") 2>&1
         trap 'sync -f "${logfile}" 2>/dev/null || true' EXIT
     fi
 }
