@@ -267,17 +267,18 @@ set -Eeuo pipefail
 grep -qw 'boot=live' /proc/cmdline || exit 0
 id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
 
-# This well-known password is deliberately limited to boot=live sessions.
+# Generate a one-boot random password; never ship a predictable live credential.
 # The installed system image keeps the retro account locked; Calamares asks
 # the installer to create a private password for an installed system.
-password='retro'
+password="$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')"
+[[ "${password}" =~ ^[[:xdigit:]]{36}$ ]] || { echo "could not generate a live password" >&2; exit 1; }
 printf 'retro:%s\n' "${password}" | chpasswd
 passwd --unlock retro >/dev/null
 {
     printf '\n\nRetro OS temporary live-session login\n'
     printf 'Username: retro\n'
     printf 'Password: %s\n' "${password}"
-    printf 'WARNING: live-session password is public: retro\n'
+    printf 'This random password is valid only for this live session.\n'
     printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
 } > /dev/tty1
 unset password
@@ -447,7 +448,7 @@ write_skel_session() {
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_config xmlns="http://openbox.org/3.4/rc">
   <resistance><strength>10</strength><screen_edge_strength>20</screen_edge_strength></resistance>
-  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus><underMouse>no</underMouse><focusLast>yes</focusLast></focus>
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><raiseOnFocus>yes</raiseOnFocus><underMouse>no</underMouse><focusLast>yes</focusLast></focus>
   <placement><policy>Smart</policy><center>yes</center><monitor>Primary</monitor></placement>
   <theme><name>Clearlooks</name><titleLayout>NLIMC</titleLayout><keepBorder>yes</keepBorder><animateIconify>no</animateIconify></theme>
   <desktops><number>2</number><firstdesk>1</firstdesk><names><name>Desktop 1</name><name>Desktop 2</name></names><popupTime>0</popupTime></desktops>
