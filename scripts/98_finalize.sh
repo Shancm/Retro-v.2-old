@@ -126,7 +126,7 @@ fix_helper_permissions() {
     chown -R root:root "${RETRO_ROOT}" "${RETRO_AI_DIR}" 2>/dev/null || true
     find "${RETRO_HELPER_DIR}" -type f -exec chmod 0755 {} +
     chmod 0755 "${RETRO_BIN_DIR}/retro" "${RETRO_AI_DIR}/retro_ai.py" 2>/dev/null || true
-    chmod 0750 "${RETRO_HELPER_DIR}/retro-live-fixup" "${RETRO_HELPER_DIR}/retro-live-credentials" "${RETRO_HELPER_DIR}/retro-live-credentials"
+    chmod 0750 "${RETRO_HELPER_DIR}/retro-live-fixup" "${RETRO_HELPER_DIR}/retro-live-credentials"
     chmod 0755 /usr/local/sbin/retro-hwprofile
     chmod 0755 /usr/local/sbin/retro-boot-report
     [[ ! -f /usr/local/sbin/retro-hardware-report ]] || chmod 0755 /usr/local/sbin/retro-hardware-report
@@ -140,11 +140,13 @@ rebuild_initramfs() {
 MODULES=most
 COMPRESS=gzip
 EOF
-    cat >> /etc/initramfs-tools/modules <<'EOF'
-overlay
-squashfs
-loop
-EOF
+    touch /etc/initramfs-tools/modules
+    local module
+    for module in overlay squashfs loop; do
+        if ! grep -Fxq "$module" /etc/initramfs-tools/modules; then
+            printf "%s\\n" "$module" >> /etc/initramfs-tools/modules
+        fi
+    done
     update-initramfs -u -k all
 }
 
