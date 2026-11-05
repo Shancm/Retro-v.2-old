@@ -729,8 +729,8 @@ cmd_doctor() {
         n="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
         if (( n > 0 )); then
             systemctl --failed --no-legend --plain
-            systemctl reset-failed || true
-            warn "${n} failed unit(s) listed above were reset - inspect with: journalctl -xb -u <unit>"
+            warn "${n} failed unit(s) remain failed; inspect with: systemctl status <unit> and journalctl -xb"
+            return 1
         else
             say "no failed systemd units"
         fi
