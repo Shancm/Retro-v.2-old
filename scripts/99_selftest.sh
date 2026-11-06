@@ -234,6 +234,10 @@ test_home() {
         done
         check "${base}/Openbox title buttons use NLIMC" "set titleLayout NLIMC" \
             grep -q '<titleLayout>NLIMC</titleLayout>' "${base}/.config/openbox/rc.xml"
+        check "${base}/Openbox close button has a left-click action" "add a Close context with a left-click Close action" \
+            grep -Fq '<context name="Close">' "${base}/.config/openbox/rc.xml"
+        check "${base}/Openbox desktop wheel bindings exist" "bind root wheel Up/Down to DesktopPrevious/DesktopNext" \
+            bash -c "grep -q 'button=\\"Up\\" action=\\"Click\\".*DesktopPrevious' '${base}/.config/openbox/rc.xml' && grep -q 'button=\\"Down\\" action=\\"Click\\".*DesktopNext' '${base}/.config/openbox/rc.xml'"
         check "${base}/Tint2 panel uses LTSC at 32px" "set panel_items=LTSC and panel_size=100% 32" \
             bash -c "grep -q '^panel_items = LTSC$' '${base}/.config/tint2/tint2rc' && grep -q '^panel_size = 100% 32$' '${base}/.config/tint2/tint2rc'"
         check "${base}/Openbox autostart configures visible X11 wallpaper and tray" "restore xset, feh, pcmanfm, tint2, nm-applet, blueman-applet and volumeicon" \
