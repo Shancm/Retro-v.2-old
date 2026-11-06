@@ -267,18 +267,16 @@ set -Eeuo pipefail
 grep -qw 'boot=live' /proc/cmdline || exit 0
 id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
 
-# Generate a one-boot random password; never ship a predictable live credential.
-# The installed system image keeps the retro account locked; Calamares asks
-# the installer to create a private password for an installed system.
-password="$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')"
-[[ "${password}" =~ ^[[:xdigit:]]{36}$ ]] || { echo "could not generate a live password" >&2; exit 1; }
+# Use the user-requested live-session credentials.
+# This applies only to boot=live; installed systems remain locked until
+# the installer creates a private account password.
+password='retro'
 printf 'retro:%s\n' "${password}" | chpasswd
 passwd --unlock retro >/dev/null
 {
-    printf '\n\nRetro OS temporary live-session login\n'
+    printf '\n\nRetro OS live-session login\n'
     printf 'Username: retro\n'
     printf 'Password: %s\n' "${password}"
-    printf 'This random password is valid only for this live session.\n'
     printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
 } > /dev/tty1
 unset password
