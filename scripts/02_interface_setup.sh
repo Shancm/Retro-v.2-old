@@ -463,8 +463,18 @@ write_skel_session() {
     <keybind key="W-F4"><action name="Close"/></keybind>
   </keyboard>
   <mouse>
-    <context name="Root"><mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind></context>
-    <context name="Titlebar"><mousebind button="Left" action="Drag"><action name="Move"/></mousebind><mousebind button="Right" action="Press"><action name="ShowMenu"><menu>client-menu</menu></action></mousebind></context>
+    <context name="Root">
+      <mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind>
+      <mousebind button="Up" action="Click"><action name="DesktopPrevious"><wrap>yes</wrap></action></mousebind>
+      <mousebind button="Down" action="Click"><action name="DesktopNext"><wrap>yes</wrap></action></mousebind>
+    </context>
+    <context name="Titlebar">
+      <mousebind button="Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="Right" action="Press"><action name="ShowMenu"><menu>client-menu</menu></action></mousebind>
+    </context>
+    <context name="Close">
+      <mousebind button="Left" action="Click"><action name="Close"/></mousebind>
+    </context>
   </mouse>
   <menu><file>menu.xml</file><hideDelay>200</hideDelay><middle>no</middle><submenuShowDelay>100</submenuShowDelay><submenuHideDelay>400</submenuHideDelay><manageDesktops>yes</manageDesktops></menu>
   <applications/>
