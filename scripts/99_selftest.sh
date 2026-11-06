@@ -247,7 +247,7 @@ test_home() {
         check "${base}/Tint2 panel uses LTSC at 32px" "set panel_items=LTSC and panel_size=100% 32" \
             bash -c "grep -q '^panel_items = LTSC$' '${base}/.config/tint2/tint2rc' && grep -q '^panel_size = 100% 32$' '${base}/.config/tint2/tint2rc'"
         check "${base}/Openbox autostart configures visible X11 wallpaper and tray" "restore xset, feh, pcmanfm, tint2, nm-applet, blueman-applet and volumeicon" \
-            bash -c "for p in 'xset s off -dpms s noblank' 'feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png' 'pcmanfm --desktop' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'volumeicon &' 'pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch'; do grep -Fq \"\$p\" '${base}/.config/openbox/autostart' || exit 1; done"
+            bash -c "for p in 'xset s off -dpms s noblank' 'feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png' 'pcmanfm --desktop' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'flock -n "${XDG_RUNTIME_DIR:-/tmp}/retro-volumeicon-${UID}.lock" volumeicon &' 'pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch'; do grep -Fq \"\$p\" '${base}/.config/openbox/autostart' || exit 1; done"
         check "${base}/PCManFM desktop uses colorful wallpaper" "set PCManFM wallpaper_mode=stretch and retro-wallpaper.png" \
             bash -c "grep -qx 'wallpaper_mode=stretch' '${base}/.config/pcmanfm/default/desktop-items-0.conf' && grep -qx 'wallpaper=/usr/share/backgrounds/retro-wallpaper.png' '${base}/.config/pcmanfm/default/desktop-items-0.conf'"
     done
