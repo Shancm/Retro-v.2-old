@@ -492,7 +492,7 @@ pcmanfm --desktop &
 tint2 &
 nm-applet &
 blueman-applet &
-volumeicon &
+flock -n "${XDG_RUNTIME_DIR:-/tmp}/retro-volumeicon-${UID}.lock" volumeicon &
 (sleep 2 && pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch) &
 if [ -x /usr/libexec/polkit-mate-authentication-agent-1 ]; then
     /usr/libexec/polkit-mate-authentication-agent-1 &
