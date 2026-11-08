@@ -187,7 +187,7 @@ test_login_stack() {
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
     check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q "^ConditionKernelCommandLine=boot=live$" /etc/systemd/system/retro-live-credentials.service
     check "live-session password is generated randomly per boot" "generate a fresh password from /dev/urandom; never use a shared default" grep -Fq '/dev/urandom' "${RETRO_HELPER_DIR}/retro-live-credentials"
-    check "live credential helper rejects failed password generation" "verify the generated password has the expected length before setting it" grep -Fq '[[ "${#password}" -eq 48 ]]' "${RETRO_HELPER_DIR}/retro-live-credentials"
+    check "live credential helper rejects failed password generation" "verify the generated password has the expected length before setting it" grep -Fq "[[ \"${#password}\" -eq 48 ]]" "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "live credential helper has no fixed default password" "remove any hard-coded live-session password" bash -c "! grep -Eq \"password=['\\\"]retro['\\\"]\" '${RETRO_HELPER_DIR}/retro-live-credentials'"
     check "live credential helper prints login instructions" "print the generated live username and password to tty1" grep -Fq "Password: %s" "${RETRO_HELPER_DIR}/retro-live-credentials"
     check "timezone is Asia/Kolkata" "set RETRO_TIMEZONE=Asia/Kolkata in config.env" grep -qx "Asia/Kolkata" /etc/timezone
@@ -249,7 +249,7 @@ test_home() {
         check "${base}/Tint2 panel uses LTSC at 32px" "set panel_items=LTSC and panel_size=100% 32" \
             bash -c "grep -q '^panel_items = LTSC$' '${base}/.config/tint2/tint2rc' && grep -q '^panel_size = 100% 32$' '${base}/.config/tint2/tint2rc'"
         check "${base}/Openbox autostart preserves user wallpaper settings" "do not force the factory wallpaper during every login; let PCManFM load the persistent per-user setting" \
-            bash -c "grep -Fq 'pcmanfm --desktop' '${base}/.config/openbox/autostart' && ! grep -Eq 'feh --bg-scale|pcmanfm --set-wallpaper=' '${base}/.config/openbox/autostart' && for p in 'xset s off -dpms s noblank' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'retro-volumeicon-'; do grep -Fq \"$p\" '${base}/.config/openbox/autostart' || exit 1; done"
+            bash -c "grep -Fq 'pcmanfm --desktop' '${base}/.config/openbox/autostart' && ! grep -Eq 'feh --bg-scale|pcmanfm --set-wallpaper=' '${base}/.config/openbox/autostart' && grep -Fq 'xset s off -dpms s noblank' '${base}/.config/openbox/autostart' && grep -Fq 'tint2 &' '${base}/.config/openbox/autostart' && grep -Fq 'nm-applet &' '${base}/.config/openbox/autostart' && grep -Fq 'blueman-applet &' '${base}/.config/openbox/autostart' && grep -Fq 'retro-volumeicon-' '${base}/.config/openbox/autostart'"
         check "${base}/PCManFM desktop uses colorful wallpaper" "set PCManFM wallpaper_mode=stretch and retro-wallpaper.png" \
             bash -c "grep -qx 'wallpaper_mode=stretch' '${base}/.config/pcmanfm/default/desktop-items-0.conf' && grep -qx 'wallpaper=/usr/share/backgrounds/retro-wallpaper.png' '${base}/.config/pcmanfm/default/desktop-items-0.conf'"
     done
