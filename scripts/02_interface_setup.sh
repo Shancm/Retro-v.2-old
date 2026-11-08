@@ -487,13 +487,13 @@ EOF
         retro_write "${autostart}" 0755 <<'EOF'
 #!/bin/sh
 xset s off -dpms s noblank &
-feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png &
+# PCManFM owns the desktop wallpaper. Do not force the factory wallpaper here:
+# user-selected wallpaper settings live in the persistent home directory.
 pcmanfm --desktop &
 tint2 &
 nm-applet &
 blueman-applet &
 flock -n "${XDG_RUNTIME_DIR:-/tmp}/retro-volumeicon-${UID}.lock" volumeicon &
-(sleep 2 && pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch) &
 if [ -x /usr/libexec/polkit-mate-authentication-agent-1 ]; then
     /usr/libexec/polkit-mate-authentication-agent-1 &
 fi
