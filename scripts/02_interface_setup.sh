@@ -267,17 +267,17 @@ set -Eeuo pipefail
 grep -qw 'boot=live' /proc/cmdline || exit 0
 id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
 
-# Use the user-requested live-session credentials.
-# This applies only to boot=live; installed systems remain locked until
-# the installer creates a private account password.
-password='retro'
+# Generate a fresh, unpredictable password for this live boot only.
+# Never ship a shared/default credential in the ISO.
+password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+[[ "${#password}" -eq 48 ]] || { echo "could not generate live-session password" >&2; exit 1; }
 printf 'retro:%s\n' "${password}" | chpasswd
 passwd --unlock retro >/dev/null
 {
-    printf '\n\nRetro OS live-session login\n'
+    printf '\n\nRetro OS live-session login (this boot only)\n'
     printf 'Username: retro\n'
     printf 'Password: %s\n' "${password}"
-    printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
+    printf 'Use Ctrl+Alt+F1 to view this message; Ctrl+Alt+F7 returns to the desktop.\n'
 } > /dev/tty1
 unset password
 EOF
