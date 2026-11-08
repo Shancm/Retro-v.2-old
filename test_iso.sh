@@ -548,7 +548,9 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
 
     local stats=""
     if kill -0 "${qpid}" 2>/dev/null && (( HAVE_PY )) && [[ -S "${sock}" ]]; then
-        sleep 2
+        # The boot report can finish just as LightDM starts on slow legacy-BIOS
+        # boots. Allow the greeter/Openbox desktop to paint before judging pixels.
+        sleep 12
         qemu_monitor "${sock}" "screendump ${dir}/screen.ppm" 2 || warn "screendump command failed"
         if [[ -s "${dir}/screen.ppm" ]]; then
             if analyse_screen "${dir}/screen.ppm" "${dir}/screen.png" > "${dir}/screen.stats" 2>"${dir}/screen.err"; then
