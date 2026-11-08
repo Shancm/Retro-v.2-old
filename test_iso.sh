@@ -482,7 +482,9 @@ run_one() {   # <mode: bios|uefi> <ram_mb> <expected-tier>
         "-audiodev" "none,id=audio0"
         "-device" "intel-hda"
         "-device" "hda-duplex,audiodev=audio0"
-        -display none
+        # Keep a real headless display surface so QEMU monitor screendump
+        # captures the guest framebuffer instead of an all-black "none" backend.
+        -display vnc=127.0.0.1:0
         -serial stdio
         -monitor "unix:${sock},server,nowait"
         -no-reboot
