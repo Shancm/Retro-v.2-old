@@ -246,14 +246,14 @@ test_home() {
             openbox_wheel_bindings_valid "${base}/.config/openbox/rc.xml"
         check "${base}/Tint2 panel uses LTSC at 32px" "set panel_items=LTSC and panel_size=100% 32" \
             bash -c "grep -q '^panel_items = LTSC$' '${base}/.config/tint2/tint2rc' && grep -q '^panel_size = 100% 32$' '${base}/.config/tint2/tint2rc'"
-        check "${base}/Openbox autostart configures visible X11 wallpaper and tray" "restore xset, feh, pcmanfm, tint2, nm-applet, blueman-applet and volumeicon" \
-            bash -c "for p in 'xset s off -dpms s noblank' 'feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png' 'pcmanfm --desktop' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'retro-volumeicon-' 'pcmanfm --set-wallpaper=/usr/share/backgrounds/retro-wallpaper.png --wallpaper-mode=stretch'; do grep -Fq \"\$p\" '${base}/.config/openbox/autostart' || exit 1; done"
+        check "${base}/Openbox autostart preserves user wallpaper settings" "do not force the factory wallpaper during every login; let PCManFM load the persistent per-user setting" \
+            bash -c "grep -Fq 'pcmanfm --desktop' '${base}/.config/openbox/autostart' && ! grep -Eq 'feh --bg-scale|pcmanfm --set-wallpaper=' '${base}/.config/openbox/autostart' && for p in 'xset s off -dpms s noblank' 'tint2 &' 'nm-applet &' 'blueman-applet &' 'retro-volumeicon-'; do grep -Fq \"$p\" '${base}/.config/openbox/autostart' || exit 1; done"
         check "${base}/PCManFM desktop uses colorful wallpaper" "set PCManFM wallpaper_mode=stretch and retro-wallpaper.png" \
             bash -c "grep -qx 'wallpaper_mode=stretch' '${base}/.config/pcmanfm/default/desktop-items-0.conf' && grep -qx 'wallpaper=/usr/share/backgrounds/retro-wallpaper.png' '${base}/.config/pcmanfm/default/desktop-items-0.conf'"
     done
 
-    check "system Openbox autostart configured" "install /etc/xdg/openbox/autostart" \
-        bash -c "test -x /etc/xdg/openbox/autostart && grep -Fq 'feh --bg-scale /usr/share/backgrounds/retro-wallpaper.png' /etc/xdg/openbox/autostart && grep -Fq 'pcmanfm --desktop' /etc/xdg/openbox/autostart"
+    check "system Openbox autostart preserves user wallpaper settings" "install /etc/xdg/openbox/autostart without forcing a factory wallpaper on each login" \
+        bash -c "test -x /etc/xdg/openbox/autostart && grep -Fq 'pcmanfm --desktop' /etc/xdg/openbox/autostart && ! grep -Eq 'feh --bg-scale|pcmanfm --set-wallpaper=' /etc/xdg/openbox/autostart"
     check "system PCManFM desktop defaults configured" "install /etc/xdg/pcmanfm/default/desktop-items-0.conf" \
         bash -c "grep -qx 'wallpaper_mode=stretch' /etc/xdg/pcmanfm/default/desktop-items-0.conf && grep -qx 'wallpaper=/usr/share/backgrounds/retro-wallpaper.png' /etc/xdg/pcmanfm/default/desktop-items-0.conf"
     check "headless Bluetooth virtual HCI module attempted" "modprobe hci_vhci in retro-hwprofile" \
