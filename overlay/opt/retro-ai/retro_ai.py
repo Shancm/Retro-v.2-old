@@ -670,7 +670,10 @@ def cmd_say(args: argparse.Namespace) -> int:
                 _voice_proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 _voice_proc.kill()
-                _voice_proc.wait()
+                try:
+                    _voice_proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
             return 1
     return 0
 

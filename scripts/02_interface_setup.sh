@@ -41,17 +41,18 @@ install_graphical_stack() {
         openbox obconf tint2 pcmanfm feh picom jgmenu xfce4-terminal \
         mousepad lxtask lxappearance scrot dmenu \
         network-manager-gnome volumeicon-alsa \
-        policykit-1 policykit-1-gnome udisks2 \
+        polkitd pkexec lxpolkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
-        cbatticon parcellite pavucontrol blueman \
+        cbatticon pavucontrol blueman \
         dillo geany geany-plugins \
         vlc ristretto evince galculator xarchiver p7zip-full unrar-free
 
     retro_apt_install_optional \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
-        xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu
+        xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu \
+        parcellite
 
     if [[ "${RETRO_INSTALL_BROWSER}" == "1" ]]; then
         retro_apt_install_optional firefox-esr
@@ -200,7 +201,7 @@ fi
 xsetroot -solid '#0c0d12' 2>/dev/null || true
 xset b off 2>/dev/null || true
 
-start_once polkit-gnome-au /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+start_once lxpolkit lxpolkit
 
 if command -v pcmanfm >/dev/null 2>&1; then
     start_once pcmanfm pcmanfm --desktop

@@ -755,6 +755,25 @@ menuentry "Debug & Health Report (serial console + boot report)" --id report {
 EOF
 }
 
+stage_grub_efi_modules() {
+    retro_info "Staging GRUB x86_64-efi modules on the ISO"
+    local src="/usr/lib/grub/x86_64-efi"
+    local dst="${IMAGE_DIR}/boot/grub/x86_64-efi"
+    local module
+
+    [[ -d "${src}" ]] || retro_die "GRUB EFI module directory missing: ${src} (install grub-efi-amd64-bin)"
+    for module in linux.mod all_video.mod normal.mod; do
+        [[ -s "${src}/${module}" ]] || retro_die "Required GRUB EFI module missing from host: ${src}/${module}"
+    done
+
+    mkdir -p "${dst}"
+    cp -a "${src}/." "${dst}/"
+    for module in linux.mod all_video.mod normal.mod; do
+        [[ -s "${dst}/${module}" ]] || retro_die "Failed to stage GRUB EFI module: ${dst}/${module}"
+    done
+    retro_ok "Staged GRUB EFI modules (including linux.mod, all_video.mod and normal.mod)"
+}
+
 build_efi_images() {
     retro_info "Building standalone GRUB EFI image + FAT boot image (efi.img)"
     local work efi_size_mb
@@ -769,7 +788,7 @@ configfile /boot/grub/grub.cfg
 EOF
 
     grub-mkstandalone --format=x86_64-efi --output="${work}/bootx64.efi" \
-        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file" \
+        --modules="part_gpt part_msdos fat iso9660 normal configfile search search_fs_file linux all_video" \
         --locales="" --fonts="" "boot/grub/grub.cfg=${work}/embedded.cfg" 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${work}/bootx64.efi" ]] || retro_die "grub-mkstandalone produced no bootx64.efi"
 
@@ -881,6 +900,7 @@ main() {
     stage_kernel
     write_isolinux
     write_grub_cfg
+    stage_grub_efi_modules
     build_efi_images
     write_disk_info
     build_iso
