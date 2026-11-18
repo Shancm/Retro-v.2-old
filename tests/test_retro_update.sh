@@ -51,10 +51,10 @@ with tarfile.open(archive, "w:gz") as tf:
         tf.addfile(item, io.BytesIO(data))
 
     if kind == "valid":
-        add_file("usr/local/bin/retro", "#!/usr/bin/env bash\\necho updated\\n")
-        add_file("opt/retro-ai/retro_ai.py", "print('updated')\\n")
+        add_file("usr/local/bin/retro", "#!/usr/bin/env bash\necho updated\n")
+        add_file("opt/retro-ai/retro_ai.py", "print('updated')\n")
     elif kind == "absolute":
-        add_file("/usr/local/bin/retro", "#!/bin/bash\\n")
+        add_file("/usr/local/bin/retro", "#!/bin/bash\n")
     elif kind == "traversal":
         add_file("opt/retro-os/../../tmp/evil", "bad")
     elif kind == "symlink":
@@ -77,9 +77,9 @@ with tarfile.open(archive, "w:gz") as tf:
     elif kind == "outside":
         add_file("etc/passwd", "bad")
     elif kind == "bad-bash":
-        add_file("usr/local/bin/retro", "#!/bin/bash\\nif then\\n")
+        add_file("usr/local/bin/retro", "#!/bin/bash\nif then\n")
     elif kind == "bad-python":
-        add_file("opt/retro-ai/retro_ai.py", "def broken(:\\n")
+        add_file("opt/retro-ai/retro_ai.py", "def broken(:\n")
     else:
         raise SystemExit("unknown archive kind")
 PY
