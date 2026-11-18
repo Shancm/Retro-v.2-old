@@ -705,7 +705,11 @@ cmd_update() {
     if [[ -n "${tu}" ]]; then
         home="$(getent passwd "${tu}" | cut -d: -f6)"
         runuser -u "${tu}" -- "${HELPER_DIR}/retro-menu-gen" --user "${home}" || warn "user menu regeneration failed"
-        user_gui openbox --reconfigure 2>/dev/null && ok "Openbox reconfigured" || say "Openbox not reachable (menus apply at next login)"
+        if user_gui openbox --reconfigure 2>/dev/null; then
+            ok "Openbox reconfigured"
+        else
+            say "Openbox not reachable (menus apply at next login)"
+        fi
     fi
     ok "retro update finished"
 }
