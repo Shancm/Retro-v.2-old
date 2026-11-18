@@ -185,7 +185,7 @@ start_log() {   # <name>
         mkdir -p /var/log/retro-os || die "cannot create /var/log/retro-os"
         MINT="" CRIM="" CYAN="" DIM="" BOLD="" RST=""
         export NO_COLOR=1
-        exec > >(sed -u -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' | tee -a "${logfile}") 2>&1
+        exec > >(sed -u -E 's/\\x1B\\[[0-9;?]*[A-Za-z]//g' | tee -a "${logfile}") 2>&1
         trap 'sync -f "${logfile}" 2>/dev/null || true' EXIT
     fi
 }
@@ -754,8 +754,7 @@ cmd_doctor() {
         n="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
         if (( n > 0 )); then
             systemctl --failed --no-legend --plain
-            systemctl reset-failed || true
-            warn "${n} failed unit(s) listed above were reset - inspect with: journalctl -xb -u <unit>"
+            warn "${n} failed unit(s) remain marked failed so their state is preserved; inspect with: journalctl -xb"
         else
             say "no failed systemd units"
         fi
