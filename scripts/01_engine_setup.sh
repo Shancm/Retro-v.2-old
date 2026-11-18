@@ -531,6 +531,83 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
+# Live USB persistence helper
+# -----------------------------------------------------------------------------
+install_persistence_helper() {
+    retro_info "Installing safe setup helper for an existing ext filesystem partition"
+    retro_write /usr/local/sbin/retro-persistence-setup 0755 <<'PERSISTENCE_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+    echo "Usage: sudo retro-persistence-setup /dev/PARTITION"
+    echo "Prepares an EXISTING ext2/3/4 partition for live-boot persistence."
+    echo "It does not create partitions, format filesystems, or erase user files."
+}
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Run as root: sudo retro-persistence-setup /dev/PARTITION" >&2
+    exit 1
+fi
+if [[ "${#}" -ne 1 || "${1}" == "-h" || "${1}" == "--help" ]]; then
+    usage
+    exit "$([[ "${#}" -eq 1 ]] && [[ "${1}" =~ ^(-h|--help)$ ]] && echo 0 || echo 2)"
+fi
+
+device="$(readlink -f -- "$1")"
+[[ -b "${device}" ]] || { echo "Not a block device: $1" >&2; exit 2; }
+[[ "$(lsblk -dnro TYPE -- "${device}")" == "part" ]] || {
+    echo "Refusing whole-disk device; specify an existing partition (for example /dev/sda3)." >&2
+    exit 2
+}
+fstype="$(blkid -o value -s TYPE -- "${device}" 2>/dev/null || true)"
+case "${fstype}" in
+    ext2|ext3|ext4) ;;
+    *) echo "Unsupported or unformatted filesystem '${fstype:-unknown}'. Use an existing ext2/3/4 partition; this tool will not format it." >&2; exit 2 ;;
+esac
+
+if findmnt -rn -S "${device}" >/dev/null 2>&1; then
+    echo "Partition is mounted. Unmount it safely before setup." >&2
+    exit 2
+fi
+
+root_source="$(findmnt -nro SOURCE / 2>/dev/null || true)"
+boot_source="$(findmnt -nro SOURCE /boot 2>/dev/null || true)"
+for protected in "${root_source}" "${boot_source}"; do
+    [[ -n "${protected}" ]] || continue
+    protected_real="$(readlink -f -- "${protected}" 2>/dev/null || printf '%s' "${protected}")"
+    [[ "${device}" != "${protected_real}" ]] || {
+        echo "Refusing to modify the currently mounted system partition." >&2
+        exit 2
+    }
+done
+
+current_label="$(blkid -o value -s LABEL -- "${device}" 2>/dev/null || true)"
+if [[ "${current_label}" != "persistence" ]]; then
+    e2label "${device}" persistence
+fi
+
+mount_dir="$(mktemp -d /run/retro-persistence.XXXXXX)"
+cleanup() {
+    mountpoint -q "${mount_dir}" && umount "${mount_dir}" || true
+    rmdir "${mount_dir}" 2>/dev/null || true
+}
+trap cleanup EXIT
+mount -o rw,nosuid,nodev,noexec "${device}" "${mount_dir}"
+conf="${mount_dir}/persistence.conf"
+if [[ ! -e "${conf}" ]]; then
+    printf '/ union\n' > "${conf}"
+elif ! grep -Fxq '/ union' "${conf}"; then
+    printf '\n/ union\n' >> "${conf}"
+fi
+sync
+echo "Persistence partition prepared: ${device} (label=persistence)"
+echo "Existing files were not formatted or deleted."
+echo "Reboot and choose 'Retro OS Live - Persistence' from the boot menu."
+PERSISTENCE_EOF
+}
+
+# -----------------------------------------------------------------------------
 # 9. Release metadata
 # -----------------------------------------------------------------------------
 write_release_info() {
@@ -557,6 +634,7 @@ main() {
     install_base_system
     install_github_cli
     install_kernel_and_live
+    install_persistence_helper
     configure_locale_time
     create_user_and_groups
     install_hw_profile_engine

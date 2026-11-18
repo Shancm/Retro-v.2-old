@@ -6,7 +6,7 @@ on:
       debian_suite:
         description: Debian suite to build against
         required: false
-        default: bookworm
+        default: trixie
         type: choice
         options: [bookworm, trixie]
   push:
