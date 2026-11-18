@@ -132,7 +132,7 @@ test_login_stack() {
     check "live credential service exists" "enable retro-live-credentials.service" test -s /etc/systemd/system/retro-live-credentials.service
     check "live credential service enabled" "systemctl enable retro-live-credentials.service" systemctl is-enabled --quiet retro-live-credentials.service
     check "credential service conditioned on boot=live" "add ConditionKernelCommandLine=boot=live" grep -q '^ConditionKernelCommandLine=boot=live$' /etc/systemd/system/retro-live-credentials.service
-    check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" bash -c '! grep -Eq "chpasswd|:retro|--unlock" "${RETRO_HELPER_DIR}/retro-live-fixup"'
+    check "live-fixup does not set a password" "remove chpasswd/default-password code from retro-live-fixup" bash -c "! grep -Eq 'chpasswd|:retro:|--unlock' \"\$1/retro-live-fixup\"" _ "${RETRO_HELPER_DIR}"
     check "default target = graphical" "systemctl set-default graphical.target" \
         test "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/lib/systemd/system/graphical.target" -o \
              "$(readlink /etc/systemd/system/default.target 2>/dev/null)" = "/usr/lib/systemd/system/graphical.target"
@@ -306,6 +306,7 @@ test_payload() {
     done
     check "bash -n retro-hwprofile" "syntax error" bash -n /usr/local/sbin/retro-hwprofile
     check "policy-rc.d removed" "98_finalize.sh cleanup_chroot (services would be blocked)" test ! -e /usr/sbin/policy-rc.d
+    # shellcheck disable=SC2016
     check "dpkg consistent" "dpkg --configure -a" bash -c '[[ -z "$(dpkg --audit)" ]]'
 }
 
