@@ -291,6 +291,8 @@ test_payload() {
     done
     check "grub-btrfs installed" "04_installer_setup.sh install_grub_btrfs (network/GitHub?)" test -x /etc/grub.d/41_snapshots-btrfs
 
+    check "USB persistence setup helper installed" "01_engine_setup.sh install_persistence_helper" test -x /usr/local/sbin/retro-persistence-setup
+    check "USB persistence setup helper syntax" "fix retro-persistence-setup" bash -n /usr/local/sbin/retro-persistence-setup
     check "retro CLI present + executable" "overlay/usr/local/bin/retro" test -x "${RETRO_BIN_DIR}/retro"
     check "retro CLI syntax" "bash -n ${RETRO_BIN_DIR}/retro" bash -n "${RETRO_BIN_DIR}/retro"
     check "retro --version" "run ${RETRO_BIN_DIR}/retro --version" "${RETRO_BIN_DIR}/retro" --version
