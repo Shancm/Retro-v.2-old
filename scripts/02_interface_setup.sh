@@ -307,31 +307,14 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# This credential is valid only for the current live boot.
+# Retro OS live-session credentials requested by the project owner.
+# This fixed password applies only to the live account; installed users
+# must create their own password during installation.
 grep -qw 'boot=live' /proc/cmdline || exit 0
 id retro >/dev/null 2>&1 || { echo "retro live user is missing" >&2; exit 1; }
 
-password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-[[ "${#password}" -eq 48 ]] || { echo "credential generation failed" >&2; exit 1; }
-printf 'retro:%s\n' "${password}" | chpasswd
+printf 'retro:retro\n' | chpasswd
 passwd --unlock retro >/dev/null
-
-# Keep getty from overwriting the credentials, switch to VT1, and show
-# the one-boot password on the physical console (never in the journal).
-systemctl stop getty@tty1.service >/dev/null 2>&1 || true
-if command -v chvt >/dev/null 2>&1; then
-    chvt 1 >/dev/null 2>&1 || true
-fi
-{
-    printf '\033[2J\033[H'
-    printf '\nRetro OS temporary live-session login\n'
-    printf '======================================\n'
-    printf 'Username: retro\n'
-    printf 'Password: %s\n' "${password}"
-    printf '\nSwitch back to the graphical greeter with Ctrl+Alt+F7.\n'
-    printf 'This password is valid only for this boot.\n'
-} > /dev/tty1
-unset password
 EOF
 
     retro_write /etc/systemd/system/retro-live-credentials.service 0644 <<'EOF'
