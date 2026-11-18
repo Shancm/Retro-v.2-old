@@ -316,12 +316,20 @@ password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 printf 'retro:%s\n' "${password}" | chpasswd
 passwd --unlock retro >/dev/null
 
-# Do not send the password to journald. Display it only on local VT1.
+# Keep getty from overwriting the credentials, switch to VT1, and show
+# the one-boot password on the physical console (never in the journal).
+systemctl stop getty@tty1.service >/dev/null 2>&1 || true
+if command -v chvt >/dev/null 2>&1; then
+    chvt 1 >/dev/null 2>&1 || true
+fi
 {
-    printf '\n\nRetro OS temporary live-session login\n'
+    printf '\033[2J\033[H'
+    printf '\nRetro OS temporary live-session login\n'
+    printf '======================================\n'
     printf 'Username: retro\n'
     printf 'Password: %s\n' "${password}"
-    printf 'Use Ctrl+Alt+F7 to return to the graphical greeter.\n'
+    printf '\nSwitch back to the graphical greeter with Ctrl+Alt+F7.\n'
+    printf 'This password is valid only for this boot.\n'
 } > /dev/tty1
 unset password
 EOF
