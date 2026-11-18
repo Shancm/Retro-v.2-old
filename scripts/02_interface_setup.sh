@@ -45,13 +45,14 @@ install_graphical_stack() {
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
-        cbatticon parcellite pavucontrol blueman \
+        cbatticon pavucontrol blueman \
         dillo geany geany-plugins \
         vlc ristretto evince galculator xarchiver p7zip-full unrar-free
 
     retro_apt_install_optional \
         xserver-xorg-video-vmware xserver-xorg-video-qxl \
-        xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu
+        xserver-xorg-video-nouveau xserver-xorg-video-ati xserver-xorg-video-amdgpu \
+        parcellite
 
     if [[ "${RETRO_INSTALL_BROWSER}" == "1" ]]; then
         retro_apt_install_optional firefox-esr
