@@ -41,7 +41,7 @@ install_graphical_stack() {
         openbox obconf tint2 pcmanfm feh picom jgmenu xfce4-terminal \
         mousepad lxtask lxappearance scrot dmenu \
         network-manager-gnome volumeicon-alsa \
-        policykit-1 policykit-1-gnome udisks2 \
+        polkitd pkexec lxpolkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
         librsvg2-common fonts-dejavu-core fonts-jetbrains-mono \
         gvfs gvfs-backends gvfs-daemons gvfs-fuse libmtp-runtime jmtpfs \
@@ -201,7 +201,7 @@ fi
 xsetroot -solid '#0c0d12' 2>/dev/null || true
 xset b off 2>/dev/null || true
 
-start_once polkit-gnome-au /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+start_once lxpolkit lxpolkit
 
 if command -v pcmanfm >/dev/null 2>&1; then
     start_once pcmanfm pcmanfm --desktop
