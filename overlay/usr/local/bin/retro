@@ -57,6 +57,14 @@ ok()   { printf '%s[+]%s %s\n' "${MINT}" "${RST}" "$*"; }
 warn() { printf '%s[!]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; }
 die()  { printf '%s[x]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; exit 1; }
 
+retro_cli_err_trap() {
+    local rc="$1" line="$2" command="$3"
+    logger -t retro-os-cli -- "command failed at line ${line}: ${command} (exit ${rc})" 2>/dev/null || true
+    printf '[retro] command failed at line %s (exit %s)\n' "${line}" "${rc}" >&2
+    exit "${rc}"
+}
+trap 'retro_cli_err_trap "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
 banner_art() {
     cat <<'EOF'
  ____   _____  _____  ____    ___       ___   ____
