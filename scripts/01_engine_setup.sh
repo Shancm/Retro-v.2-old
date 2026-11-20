@@ -183,7 +183,10 @@ configure_locale_time() {
     [[ -n "${RETRO_NTP_SERVERS//[[:space:]]/}" ]] \
         || retro_die "RETRO_NTP_SERVERS must contain at least one server"
     local server
-    for server in ${RETRO_NTP_SERVERS}; do
+    local -a ntp_servers=()
+    read -r -a ntp_servers <<< "${RETRO_NTP_SERVERS}"
+    (( ${#ntp_servers[@]} > 0 )) || retro_die "RETRO_NTP_SERVERS must contain at least one server"
+    for server in "${ntp_servers[@]}"; do
         [[ "${server}" =~ ^[A-Za-z0-9._:-]+$ && "${server}" != -* ]] \
             || retro_die "Invalid NTP server value: ${server}"
     done
