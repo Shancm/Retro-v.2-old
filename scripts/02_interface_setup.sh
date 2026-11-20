@@ -169,7 +169,7 @@ install_login_stack() {
 write_session_start() {
     retro_write "${RETRO_HELPER_DIR}/retro-session-start" 0755 <<'EOF'
 #!/usr/bin/env bash
-set -u
+set -Eeuo pipefail
 
 PROFILE_ENV="/run/retro-os/profile.env"
 [[ -r "${PROFILE_ENV}" ]] && . "${PROFILE_ENV}"
@@ -179,6 +179,7 @@ RETRO_PICOM="${RETRO_PICOM:-on}"
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}"
 mkdir -p "${CACHE_DIR}" "${HOME}/.config/retro"
 exec >>"${CACHE_DIR}/retro-session.log" 2>&1
+trap 'rc=$?; logger -t retro-session-start -- "failed at line ${LINENO} (exit ${rc})" 2>/dev/null || true; echo "retro-session-start failed at line ${LINENO} (exit ${rc})"; exit "${rc}"' ERR
 echo "=== retro-session-start $(date '+%F %T') tier=${RETRO_TIER} picom=${RETRO_PICOM} ==="
 
 running() { pgrep -u "$(id -u)" -x "$1" >/dev/null 2>&1; }
