@@ -46,8 +46,8 @@ class FullPersistenceTests(unittest.TestCase):
         self.assertIn('[[ "${current_label}" != "persistence" ]]', self.helper)
 
     def test_bios_and_uefi_persistence_boot_entries_exist(self):
-        self.assertRegex(self.build, r"LABEL persistence[\\s\\S]{0,220}persistence quiet")
-        self.assertRegex(self.build, r'menuentry "Retro OS Live - Persistence[\\s\\S]{0,220}persistence quiet')
+        self.assertRegex(self.build, r"LABEL persistence[\s\S]{0,220}persistence quiet")
+        self.assertRegex(self.build, r'menuentry "Retro OS Live - Persistence[\s\S]{0,220}persistence quiet')
 
     def test_live_boot_engine_is_installed(self):
         self.assertRegex(self.engine_source(), r"retro_apt_install initramfs-tools live-boot live-config")
