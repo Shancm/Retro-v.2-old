@@ -178,7 +178,7 @@ configure_locale_time() {
     local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
     [[ -r "${zoneinfo}" ]] || retro_die "Timezone data not found: ${RETRO_TIMEZONE}"
     ln -sf "${zoneinfo}" /etc/localtime
-    printf '%s\\n' "${RETRO_TIMEZONE}" > /etc/timezone
+    printf '%s\n' "${RETRO_TIMEZONE}" > /etc/timezone
 
     # systemd-timesyncd corrects the clock automatically once networking is up.
     retro_write /etc/systemd/timesyncd.conf 0644 <<'NTP_EOF'
