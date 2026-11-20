@@ -438,7 +438,8 @@ stage_hash() {   # <script|string>
         fi
         {
             cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1"
-            printf '\noverlay:%s\nwallpaper-source:%s\n' "$(overlay_hash)" "${wallpaper_hash}"
+            printf '\noverlay:%s\nwallpaper-source:%s\ntimezone:%s\nntp-servers:%s\ntz-autodetect:%s\n' \
+                "$(overlay_hash)" "${wallpaper_hash}" "${RETRO_TIMEZONE}" "${RETRO_NTP_SERVERS}" "${RETRO_TZ_AUTODETECT}"
         } | sha256sum | awk '{print $1}'
     else
         # Bootstrap cache depends only on explicit Debian bootstrap inputs.
