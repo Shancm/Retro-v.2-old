@@ -78,7 +78,7 @@ jobs:
           fi
       - name: Bash syntax
         run: >-
-            bash -n config.env build.sh test_iso.sh scripts/*.sh
+          bash -n config.env build.sh test_iso.sh scripts/*.sh
           overlay/usr/local/bin/retro
       - name: ShellCheck
         run: >-
