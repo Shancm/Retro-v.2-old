@@ -366,10 +366,10 @@ EOF
 
 write_wallpaper_picker() {
     retro_info "Installing optional Openbox wallpaper file picker"
-    retro_write "\${RETRO_HELPER_DIR}/retro-wallpaper-picker" 0755 <<'PICKER_EOF'
+    retro_write "${RETRO_HELPER_DIR}/retro-wallpaper-picker" 0755 <<'PICKER_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-trap 'rc=$?; logger -t retro-wallpaper-picker -- "failed at line \${LINENO} (exit \${rc})" 2>/dev/null || true; exit "\${rc}"' ERR
+trap 'rc=$?; logger -t retro-wallpaper-picker -- "failed at line ${LINENO} (exit ${rc})" 2>/dev/null || true; exit "${rc}"' ERR
 
 if command -v zenity >/dev/null 2>&1; then
     selected="$(zenity --file-selection --title="Choose a wallpaper" \
@@ -382,8 +382,8 @@ else
     exit 127
 fi
 
-[[ -n "\${selected}" && -f "\${selected}" ]] || exit 0
-exec /usr/local/bin/retro wallpaper set "\${selected}"
+[[ -n "${selected}" && -f "${selected}" ]] || exit 0
+exec /usr/local/bin/retro wallpaper set "${selected}"
 PICKER_EOF
 }
 
