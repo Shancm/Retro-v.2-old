@@ -912,7 +912,7 @@ cmd_time() {
         tz)
             [[ $# -eq 1 ]] || die $'usage: retro time tz <Zone>\n\texample: retro time tz Asia/Kolkata'
             zone="$1"
-            [[ "${zone}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] \
+            [[ "${zone}" != *".."* && "${zone}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] \
                 && [[ -e "/usr/share/zoneinfo/${zone}" ]] \
                 || die "unknown timezone: ${zone}"
             need_root
