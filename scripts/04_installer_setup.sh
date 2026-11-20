@@ -168,6 +168,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 if [[ -e /etc/localtime ]]; then
     step "preserving Calamares-selected timezone: $(readlink -f /etc/localtime)"
 fi
+apt-mark manual systemd-timesyncd >/dev/null 2>&1 || true
 systemctl enable systemd-timesyncd.service >/dev/null 2>&1 || step "could not enable systemd-timesyncd"
 
 step "purging live-boot / live-config / installer"
