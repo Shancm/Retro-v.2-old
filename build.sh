@@ -572,7 +572,7 @@ apply_overlay() {   # <label>
     [[ -d "${OVERLAY_DIR}" ]] || retro_die "overlay directory missing: ${OVERLAY_DIR}"
     # Ownership is deliberately NOT preserved: host UIDs (often 1000) would
     # otherwise collide with the in-image user 'retro'.
-    cp -a -- "${OVERLAY_DIR}/." "${CHROOT_DIR}/"
+    cp -a --no-preserve=ownership "${OVERLAY_DIR}/." "${CHROOT_DIR}/"
     if [[ -n "${RETRO_WALLPAPER_SRC:-}" ]]; then
         [[ -f "${RETRO_WALLPAPER_SRC}" && -r "${RETRO_WALLPAPER_SRC}" ]] \
             || retro_die "RETRO_WALLPAPER_SRC is not a readable file: ${RETRO_WALLPAPER_SRC}"
