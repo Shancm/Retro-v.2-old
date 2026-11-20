@@ -300,6 +300,7 @@ test_payload() {
         "${RETRO_BIN_DIR}/retro" wallpaper show
     check "systemd-timesyncd enabled" "01_engine_setup.sh configure_locale_time must enable systemd-timesyncd" \
         systemctl is-enabled systemd-timesyncd.service
+    # shellcheck disable=SC2016
     check "configured timezone is valid and applied" "check RETRO_TIMEZONE and /etc/localtime in 01_engine_setup.sh" \
         bash -c '[[ -e "/usr/share/zoneinfo/$1" && "$(cat /etc/timezone)" == "$1" && "$(readlink -f /etc/localtime)" == "$(readlink -f "/usr/share/zoneinfo/$1")" ]]' \
         _ "${RETRO_TIMEZONE}"
