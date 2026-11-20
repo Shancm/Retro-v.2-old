@@ -446,6 +446,17 @@ stage_hash() {   # <script|string>
         printf '%s' "$1" | sha256sum | awk '{print $1}'
     fi
 }
+finalized_hash() {
+    # A passing self-test is valid only for the exact finalize script,
+    # self-test script, configuration and overlay that produced the chroot.
+    {
+        cat "${SELF_DIR}/config.env" \
+            "${SCRIPTS_DIR}/98_finalize.sh" \
+            "${SCRIPTS_DIR}/99_selftest.sh"
+        printf '\\noverlay:%s\\n' "$(overlay_hash)"
+    } | sha256sum | awk '{print $1}'
+}
+
 stamp_ok() {   # <name> <hash>
     [[ -f "${STAMP_DIR}/$1" && "$(cat "${STAMP_DIR}/$1")" == "$2" ]]
 }
@@ -544,7 +555,10 @@ prepare_chroot_for_scripts() {
         printf '#!/bin/sh\nexit 101\n' > "${CHROOT_DIR}/usr/sbin/policy-rc.d"
         chmod 0755 "${CHROOT_DIR}/usr/sbin/policy-rc.d"
     fi
-    if ! ls "${CHROOT_DIR}"/var/lib/apt/lists/*Packages* >/dev/null 2>&1 && [[ -f "${CHROOT_DIR}/etc/apt/sources.list" ]]; then
+    local sources_list="${CHROOT_DIR}/etc/apt/sources.list"
+    local sources_dir="${CHROOT_DIR}/etc/apt/sources.list.d"
+    if ! ls "${CHROOT_DIR}"/var/lib/apt/lists/*Packages* >/dev/null 2>&1 && \
+       { [[ -f "${sources_list}" ]] || compgen -G "${sources_dir}/*.sources" >/dev/null; }; then
         retro_info "Refreshing apt lists inside the chroot (resume)"
         run_chroot_cmd /usr/bin/apt-get update
     fi
@@ -626,7 +640,7 @@ run_stage_pipeline() {
         retro_error "After fixing, re-run ./build.sh (completed stages are skipped)."
         exit 1
     fi
-    stamp_set finalized "$(stage_hash 99_selftest.sh)"
+    stamp_set finalized "$(finalized_hash)"
 
     # Leave a pristine chroot behind
     rm -rf "${CHROOT_DIR}${STAGE_DIR_IN_CHROOT}"
@@ -646,6 +660,9 @@ assert_chroot_quiet() {
         retro_die "mounts are still active under ${CHROOT_DIR}; squashfs would swallow host /dev,/proc. Aborting."
     fi
     [[ -f "${STAMP_DIR}/finalized" ]] || retro_die "chroot has no passing self-test stamp - run ./build.sh without --skip-chroot first"
+    local expected
+    expected="$(finalized_hash)"
+    stamp_ok finalized "${expected}" || retro_die "scripts/overlay changed since last self-test; re-run without --skip-chroot"
 }
 
 build_squashfs() {
