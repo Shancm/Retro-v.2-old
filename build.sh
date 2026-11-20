@@ -228,6 +228,11 @@ preflight_binaries() {
         fi
     done
 
+    if [[ -n "${RETRO_WALLPAPER_SRC:-}" ]] && ! command -v file >/dev/null 2>&1; then
+        retro_error "RETRO_WALLPAPER_SRC is set but the host 'file' command is missing"
+        missing=1
+    fi
+
     # "findiso" is not a program: what matters is that the syslinux/ISOLINUX
     # assets exist, so locate them explicitly.
     ISOLINUX_BIN="$(first_existing /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/bios/isolinux.bin /usr/share/syslinux/isolinux.bin || true)"
@@ -424,16 +429,23 @@ overlay_hash() {
 
 stage_hash() {   # <script|string>
     if [[ -f "${SCRIPTS_DIR}/$1" ]]; then
+        local wallpaper_hash="none"
+        if [[ -n "${RETRO_WALLPAPER_SRC:-}" ]]; then
+            [[ -f "${RETRO_WALLPAPER_SRC}" && -r "${RETRO_WALLPAPER_SRC}" ]] \
+                || retro_die "RETRO_WALLPAPER_SRC is not a readable file: ${RETRO_WALLPAPER_SRC}"
+            wallpaper_hash="$(sha256sum -- "${RETRO_WALLPAPER_SRC}" | awk '{print $1}')"
+            [[ -n "${wallpaper_hash}" ]] || retro_die "could not hash RETRO_WALLPAPER_SRC"
+        fi
         {
             cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1"
-            printf '\noverlay:%s\n' "$(overlay_hash)"
+            printf '\noverlay:%s\nwallpaper-source:%s\ntimezone:%s\nntp-servers:%s\ntz-autodetect:%s\n' \
+                "$(overlay_hash)" "${wallpaper_hash}" "${RETRO_TIMEZONE}" "${RETRO_NTP_SERVERS}" "${RETRO_TZ_AUTODETECT}"
         } | sha256sum | awk '{print $1}'
     else
         # Bootstrap cache depends only on explicit Debian bootstrap inputs.
         printf '%s' "$1" | sha256sum | awk '{print $1}'
     fi
 }
-
 stamp_ok() {   # <name> <hash>
     [[ -f "${STAMP_DIR}/$1" && "$(cat "${STAMP_DIR}/$1")" == "$2" ]]
 }
@@ -478,7 +490,8 @@ build_chroot_env() {
     local v
     for v in GITHUB_TOKEN RETRO_INSTALL_FIRMWARE RETRO_INSTALL_BROWSER RETRO_INSTALL_CALAMARES \
              RETRO_SLIM_DPKG RETRO_TOOLS_CHANNEL RETRO_TOOLS_STRICT RETRO_UPDATE_URL RETRO_UPDATE_REPO \
-             RETRO_LOW_TIER_MAX_MB DEBIAN_MIRROR DEBIAN_SECURITY_MIRROR; do
+             RETRO_LOW_TIER_MAX_MB RETRO_TIMEZONE RETRO_NTP_SERVERS RETRO_TZ_AUTODETECT \
+             DEBIAN_MIRROR DEBIAN_SECURITY_MIRROR; do
         if [[ -n "${!v:-}" ]]; then CHROOT_ENV+=("${v}=${!v}"); fi
     done
 }
@@ -561,6 +574,20 @@ apply_overlay() {   # <label>
     # Ownership is deliberately NOT preserved: host UIDs (often 1000) would
     # otherwise collide with the in-image user 'retro'.
     cp -a --no-preserve=ownership "${OVERLAY_DIR}/." "${CHROOT_DIR}/"
+    if [[ -n "${RETRO_WALLPAPER_SRC:-}" ]]; then
+        [[ -f "${RETRO_WALLPAPER_SRC}" && -r "${RETRO_WALLPAPER_SRC}" ]] \
+            || retro_die "RETRO_WALLPAPER_SRC is not a readable file: ${RETRO_WALLPAPER_SRC}"
+        local wallpaper_mime wallpaper_size
+        wallpaper_mime="$(file --mime-type -b -- "${RETRO_WALLPAPER_SRC}")"
+        [[ "${wallpaper_mime}" == "image/png" ]] \
+            || retro_die "RETRO_WALLPAPER_SRC must be a PNG image (got ${wallpaper_mime})"
+        wallpaper_size="$(stat -c '%s' -- "${RETRO_WALLPAPER_SRC}")"
+        (( wallpaper_size <= 20971520 )) \
+            || retro_die "RETRO_WALLPAPER_SRC exceeds the 20 MiB limit"
+        install -D -m 0644 -- "${RETRO_WALLPAPER_SRC}" \
+            "${CHROOT_DIR}/usr/share/backgrounds/retro-os/wallpaper.png"
+        retro_info "Applied custom default wallpaper from RETRO_WALLPAPER_SRC"
+    fi
     chown -R root:root "${CHROOT_DIR}/usr/local/bin" "${CHROOT_DIR}/opt" 2>/dev/null || true
     chmod 0755 "${CHROOT_DIR}/usr/local/bin/retro" "${CHROOT_DIR}/opt/retro-ai/retro_ai.py"
 }

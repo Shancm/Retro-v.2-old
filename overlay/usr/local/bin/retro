@@ -57,6 +57,14 @@ ok()   { printf '%s[+]%s %s\n' "${MINT}" "${RST}" "$*"; }
 warn() { printf '%s[!]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; }
 die()  { printf '%s[x]%s %s\n' "${CRIM}" "${RST}" "$*" >&2; exit 1; }
 
+retro_cli_err_trap() {
+    local rc="$1" line="$2" command="$3"
+    logger -t retro-os-cli -- "command failed at line ${line}: ${command} (exit ${rc})" 2>/dev/null || true
+    printf '[retro] command failed at line %s (exit %s)\n' "${line}" "${rc}" >&2
+    exit "${rc}"
+}
+trap 'retro_cli_err_trap "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
 banner_art() {
     cat <<'EOF'
  ____   _____  _____  ____    ___       ___   ____
@@ -128,6 +136,8 @@ ${MINT}Session${RST}
   mon                  system monitor (btop, falls back to htop)
   fetch                ASCII system summary (OS, kernel, uptime, RAM, CPU)
   profile              show the adaptive hardware profile in effect
+  time [status|tz <Zone>|sync] manage local timezone and NTP synchronization
+  wallpaper [set <file>|reset|show] manage the desktop wallpaper
 
 ${MINT}Performance${RST}
   boost                stop Picom + idle daemons, drop caches, recover RAM now
@@ -882,6 +892,167 @@ cmd_menu() {
 }
 
 # -----------------------------------------------------------------------------
+# Time and wallpaper
+# -----------------------------------------------------------------------------
+cmd_time() {
+    local action="${1:-status}" zone
+    [[ $# -eq 0 ]] || shift
+    case "${action}" in
+        status)
+            [[ $# -eq 0 ]] || die $'usage: retro time [status|tz <Zone>|sync]\n\tstatus shows timezone and NTP synchronization'
+            command -v timedatectl >/dev/null 2>&1 || die "timedatectl is unavailable"
+            timedatectl status || die "could not read system time status"
+            if command -v systemctl >/dev/null 2>&1; then
+                printf 'timesyncd: enabled=%s active=%s\n' \
+                    "$(systemctl is-enabled systemd-timesyncd.service 2>/dev/null || echo unknown)" \
+                    "$(systemctl is-active systemd-timesyncd.service 2>/dev/null || echo inactive)"
+            fi
+            timedatectl timesync-status 2>/dev/null || warn "no NTP synchronization details are available yet"
+            ;;
+        tz)
+            [[ $# -eq 1 ]] || die $'usage: retro time tz <Zone>\n\texample: retro time tz Asia/Kolkata'
+            zone="$1"
+            [[ "${zone}" != *".."* && "${zone}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] \
+                && [[ -e "/usr/share/zoneinfo/${zone}" ]] \
+                || die "unknown timezone: ${zone}"
+            need_root
+            start_log time
+            timedatectl set-timezone "${zone}" || die "failed to set timezone: ${zone}"
+            ok "timezone set to ${zone}"
+            ;;
+        sync)
+            [[ $# -eq 0 ]] || die $'usage: retro time sync\n\trestart systemd-timesyncd and report synchronization status'
+            need_root
+            start_log time
+            systemctl restart systemd-timesyncd.service || die "could not restart systemd-timesyncd"
+            if timedatectl timesync-status; then
+                ok "systemd-timesyncd restarted"
+            else
+                warn "systemd-timesyncd restarted; waiting for a reachable NTP server"
+                timedatectl status || true
+            fi
+            ;;
+        *)
+            die $'usage: retro time [status|tz <Zone>|sync]\n\tUse "retro time" to show current status.'
+            ;;
+    esac
+}
+
+wallpaper_target() {
+    local user passwd_entry
+    if [[ "${EUID}" -eq 0 ]]; then
+        user="${SUDO_USER:-}"
+        [[ -n "${user}" && "${user}" != "root" ]] || user="$(getent passwd 1000 | cut -d: -f1)"
+    else
+        user="$(id -un)"
+    fi
+    [[ -n "${user}" ]] || die "could not determine the desktop user"
+    passwd_entry="$(getent passwd "${user}")" || die "desktop user not found: ${user}"
+    WALLPAPER_USER="${user}"
+    WALLPAPER_HOME="$(printf '%s' "${passwd_entry}" | cut -d: -f6)"
+    [[ -n "${WALLPAPER_HOME}" && -d "${WALLPAPER_HOME}" ]] || die "desktop home directory is unavailable"
+}
+
+wallpaper_current() {
+    local dir="$1" extension
+    for extension in png jpg webp; do
+        if [[ -s "${dir}/wallpaper.${extension}" ]]; then
+            printf '%s\n' "${dir}/wallpaper.${extension}"
+            return 0
+        fi
+    done
+    printf '%s\n' "/usr/share/backgrounds/retro-os/wallpaper.png"
+}
+
+wallpaper_apply() {
+    local image="$1"
+    if [[ -n "${DISPLAY:-}" ]] && command -v pcmanfm >/dev/null 2>&1; then
+        if [[ "${EUID}" -eq 0 ]]; then
+            runuser -u "${WALLPAPER_USER}" -- env HOME="${WALLPAPER_HOME}" \
+                DISPLAY="${DISPLAY}" XAUTHORITY="${XAUTHORITY:-${WALLPAPER_HOME}/.Xauthority}" \
+                pcmanfm --set-wallpaper="${image}" || warn "wallpaper saved; PCManFM could not update the desktop immediately"
+        else
+            pcmanfm --set-wallpaper="${image}" || warn "wallpaper saved; PCManFM could not update the desktop immediately"
+        fi
+    elif [[ -n "${DISPLAY:-}" ]] && command -v feh >/dev/null 2>&1; then
+        if [[ "${EUID}" -eq 0 ]]; then
+            runuser -u "${WALLPAPER_USER}" -- env HOME="${WALLPAPER_HOME}" DISPLAY="${DISPLAY}" \
+                feh --bg-fill "${image}" || warn "wallpaper saved; feh could not update the desktop immediately"
+        else
+            feh --bg-fill "${image}" || warn "wallpaper saved; feh could not update the desktop immediately"
+        fi
+    else
+        warn "wallpaper saved; it will be applied at the next Openbox login"
+    fi
+}
+
+cmd_wallpaper() {
+    local action="${1:-show}" source_file mime extension size destination temp dir image
+    [[ $# -eq 0 ]] || shift
+    wallpaper_target
+    dir="${WALLPAPER_HOME}/.config/retro"
+
+    case "${action}" in
+        show)
+            [[ $# -eq 0 ]] || die $'usage: retro wallpaper [show|set <file>|reset]\n\tshow the active wallpaper path'
+            image="$(wallpaper_current "${dir}")"
+            if [[ "${image}" == /usr/share/backgrounds/retro-os/wallpaper.png ]]; then
+                printf 'Default wallpaper: %s\n' "${image}"
+            else
+                printf 'Custom wallpaper: %s\n' "${image}"
+            fi
+            ;;
+        set)
+            [[ $# -eq 1 ]] || die $'usage: retro wallpaper set <file>\n\taccepted formats: PNG, JPG, JPEG, WEBP (maximum 20 MiB)'
+            source_file="$1"
+            [[ -f "${source_file}" && -r "${source_file}" ]] || die "wallpaper file is not readable: ${source_file}"
+            size="$(stat -c '%s' -- "${source_file}")" || die "could not read wallpaper file size"
+            (( size <= 20971520 )) || die "wallpaper exceeds the 20 MiB limit"
+            mime="$(file --mime-type -b -- "${source_file}")" || die "could not inspect wallpaper file type"
+            case "${mime}" in
+                image/png) extension="png" ;;
+                image/jpeg) extension="jpg" ;;
+                image/webp) extension="webp" ;;
+                *) die "unsupported wallpaper type: ${mime} (use PNG, JPG, JPEG or WEBP)" ;;
+            esac
+
+            if [[ "${EUID}" -eq 0 ]]; then
+                install -d -m 0755 -o "${WALLPAPER_USER}" -g "$(id -gn "${WALLPAPER_USER}")" "${dir}" \
+                    || die "could not prepare wallpaper directory"
+            else
+                mkdir -p "${dir}" || die "could not prepare wallpaper directory"
+            fi
+            destination="${dir}/wallpaper.${extension}"
+            temp="$(mktemp "${dir}/.wallpaper.XXXXXX")" || die "could not create temporary wallpaper file"
+            if ! install -m 0644 -- "${source_file}" "${temp}"; then
+                rm -f -- "${temp}"
+                die "could not copy wallpaper"
+            fi
+            mv -f -- "${temp}" "${destination}" || die "could not atomically save wallpaper"
+            if [[ "${EUID}" -eq 0 ]]; then
+                chown "${WALLPAPER_USER}:$(id -gn "${WALLPAPER_USER}")" "${destination}"
+            fi
+            local old_ext
+            for old_ext in png jpg webp; do
+                [[ "${old_ext}" == "${extension}" ]] || rm -f -- "${dir}/wallpaper.${old_ext}"
+            done
+            ok "wallpaper saved to ${destination}"
+            wallpaper_apply "${destination}"
+            ;;
+        reset)
+            [[ $# -eq 0 ]] || die $'usage: retro wallpaper reset\n\tremove the custom wallpaper and restore the Retro OS default'
+            rm -f -- "${dir}/wallpaper.png" "${dir}/wallpaper.jpg" "${dir}/wallpaper.webp"
+            image="/usr/share/backgrounds/retro-os/wallpaper.png"
+            wallpaper_apply "${image}"
+            ok "default wallpaper restored"
+            ;;
+        *)
+            die $'usage: retro wallpaper [show|set <file>|reset]\n\tshow, set, or reset the desktop wallpaper'
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
 # Dispatcher
 # -----------------------------------------------------------------------------
 main() {
@@ -904,6 +1075,8 @@ main() {
         ai)                   cmd_ai "$@" ;;
         profile)              cmd_profile "$@" ;;
         menu)                 cmd_menu "$@" ;;
+        time)                 cmd_time "$@" ;;
+        wallpaper)            cmd_wallpaper "$@" ;;
         *)                    warn "unknown command: ${cmd}"; usage >&2; exit 2 ;;
     esac
 }

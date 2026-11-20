@@ -174,11 +174,57 @@ configure_locale_time() {
     grep -q "^${RETRO_LOCALE} " /etc/locale.gen || echo "${RETRO_LOCALE} UTF-8" >> /etc/locale.gen
     locale-gen
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
-    
-    ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
-    echo "Asia/Kolkata" > /etc/timezone
+
+    local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
+    [[ "${RETRO_TIMEZONE}" != *".."* && "${RETRO_TIMEZONE}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -e "${zoneinfo}" ]] \
+        || retro_die "Invalid RETRO_TIMEZONE: ${RETRO_TIMEZONE}"
+    [[ "${RETRO_TZ_AUTODETECT}" == "0" || "${RETRO_TZ_AUTODETECT}" == "1" ]] \
+        || retro_die "RETRO_TZ_AUTODETECT must be 0 or 1"
+    [[ -n "${RETRO_NTP_SERVERS//[[:space:]]/}" ]] \
+        || retro_die "RETRO_NTP_SERVERS must contain at least one server"
+    local server
+    local -a ntp_servers=()
+    read -r -a ntp_servers <<< "${RETRO_NTP_SERVERS}"
+    (( ${#ntp_servers[@]} > 0 )) || retro_die "RETRO_NTP_SERVERS must contain at least one server"
+    for server in "${ntp_servers[@]}"; do
+        [[ "${server}" =~ ^[A-Za-z0-9._:-]+$ && "${server}" != -* ]] \
+            || retro_die "Invalid NTP server value: ${server}"
+    done
+
+    ln -sfn -- "${zoneinfo}" /etc/localtime
+    printf '%s\n' "${RETRO_TIMEZONE}" > /etc/timezone
+    printf '0.0 0 0.0\n0\nUTC\n' > /etc/adjtime
+
+    retro_write /etc/systemd/timesyncd.conf.d/retro.conf 0644 <<EOF
+[Time]
+NTP=${RETRO_NTP_SERVERS}
+EOF
+    systemctl unmask systemd-timesyncd.service >/dev/null 2>&1 || true
     systemctl enable systemd-timesyncd.service
-    systemctl enable bluetooth.service || true 
+
+    if [[ "${RETRO_TZ_AUTODETECT}" == "1" ]]; then
+        retro_info "Enabling optional network timezone autodetection"
+        retro_write /etc/NetworkManager/dispatcher.d/90-retro-timezone 0755 <<'TZ_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+trap 'rc=$?; logger -t retro-timezone-dispatcher -- "failed at line ${LINENO} (exit ${rc})" 2>/dev/null || true; exit "${rc}"' ERR
+
+[[ "${2:-}" == "up" ]] || exit 0
+mkdir -p /run/retro-os
+mkdir /run/retro-os/timezone-autodetect.lock 2>/dev/null || exit 0
+
+# Privacy: this optional mode sends one HTTPS request to ipapi.co per boot
+# to infer the timezone from the public IP address. Leave disabled to avoid it.
+zone="$(curl -fsS --connect-timeout 2 --max-time 5 https://ipapi.co/timezone/ 2>/dev/null || true)"
+[[ "${zone}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] || exit 0
+[[ -e "/usr/share/zoneinfo/${zone}" ]] || exit 0
+timedatectl set-timezone "${zone}" >/dev/null 2>&1 || true
+TZ_EOF
+    else
+        rm -f /etc/NetworkManager/dispatcher.d/90-retro-timezone
+    fi
+
+    systemctl enable bluetooth.service || true
 
     retro_write /etc/default/keyboard 0644 <<EOF
 XKBMODEL="pc105"
@@ -197,11 +243,10 @@ ff02::1     ip6-allnodes
 ff02::2     ip6-allrouters
 EOF
 
-retro_info "Configuring global PATH for all users (/usr/sbin support)"
-retro_write /etc/profile.d/retro-path.sh 0644 <<'EOF'
+    retro_info "Configuring global PATH for all users (/usr/sbin support)"
+    retro_write /etc/profile.d/retro-path.sh 0644 <<'EOF'
 export PATH="${PATH}:/usr/local/sbin:/usr/sbin:/sbin"
 EOF
-
 }
 
 # -----------------------------------------------------------------------------

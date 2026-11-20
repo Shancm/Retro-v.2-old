@@ -129,13 +129,13 @@ write_post_install() {
 #!/usr/bin/env bash
 # retro-post-install - runs inside the freshly installed system (Calamares
 # shellprocess, chrooted). It must never fail the installation: always exit 0.
-set -u
+set -Eeuo pipefail
 LOG="/var/log/retro-os/post-install.log"
 mkdir -p "$(dirname "${LOG}")"
 exec >>"${LOG}" 2>&1
-echo "=== retro-post-install $(date '+%F %T') ==="
-
 step() { echo "[post-install] $*"; }
+trap 'rc=$?; echo "[post-install] non-fatal error at line ${LINENO} (exit ${rc})"; exit 0' ERR
+echo "=== retro-post-install $(date '+%F %T') ==="
 
 # 1. Remove the live user once a real user exists
 new_user="$(getent passwd | awk -F: '$3>=1000 && $3<65534 && $1!="retro" {print $1; exit}')"
@@ -163,6 +163,14 @@ systemctl disable retro-live-fixup.service retro-live-credentials.service retro-
 rm -f /etc/systemd/system/retro-live-fixup.service /etc/systemd/system/retro-live-credentials.service
 rm -f /opt/retro-os/bin/retro-live-fixup /opt/retro-os/bin/retro-live-credentials
 systemctl daemon-reload >/dev/null 2>&1 || true
+
+# Preserve the timezone selected by Calamares; do not replace /etc/localtime.
+if [[ -e /etc/localtime ]]; then
+    step "preserving Calamares-selected timezone: $(readlink -f /etc/localtime)"
+fi
+apt-mark manual systemd-timesyncd >/dev/null 2>&1 || true
+systemctl enable systemd-timesyncd.service >/dev/null 2>&1 || step "could not enable systemd-timesyncd"
+
 step "purging live-boot / live-config / installer"
 DEBIAN_FRONTEND=noninteractive apt-get purge -y live-boot live-boot-initramfs-tools \
     live-config live-config-systemd calamares calamares-settings-debian >/dev/null 2>&1 || true
