@@ -175,8 +175,17 @@ configure_locale_time() {
     locale-gen
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
     
-    ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
-    echo "Asia/Kolkata" > /etc/timezone
+    local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
+    [[ -r "${zoneinfo}" ]] || retro_die "Timezone data not found: ${RETRO_TIMEZONE}"
+    ln -sf "${zoneinfo}" /etc/localtime
+    printf '%s\n' "${RETRO_TIMEZONE}" > /etc/timezone
+
+    # systemd-timesyncd corrects the clock automatically once networking is up.
+    retro_write /etc/systemd/timesyncd.conf 0644 <<'NTP_EOF'
+[Time]
+NTP=time.google.com time.cloudflare.com
+FallbackNTP=0.debian.pool.ntp.org 1.debian.pool.ntp.org
+NTP_EOF
     systemctl enable systemd-timesyncd.service
     systemctl enable bluetooth.service || true 
 

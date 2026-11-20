@@ -36,6 +36,8 @@ BUILD_START="$(date +%s)"
 ISOLINUX_BIN=""
 ISOHDPFX=""
 SYSLINUX_MOD_DIR=""
+OVERLAY_HASH=""
+WALLPAPER_SEED_DIR="${BUILD_ROOT}/.wallpaper-seed"
 
 # Order matters: a changed stage invalidates every stage after it.
 CHROOT_STAGES=(01_engine_setup.sh 02_interface_setup.sh 03_modules_setup.sh 04_installer_setup.sh)
@@ -313,12 +315,12 @@ preflight_syntax() {
 }
 
 seed_wallpaper() {
-    local wp="${OVERLAY_DIR}/usr/share/backgrounds/retro-os/wallpaper.png"
-    if [[ -s "${wp}" ]]; then
+    local wp="${WALLPAPER_SEED_DIR}/wallpaper.png"
+    if [[ -s "${OVERLAY_DIR}/usr/share/backgrounds/retro-os/wallpaper.png" ]]; then
         retro_ok "wallpaper present: overlay/usr/share/backgrounds/retro-os/wallpaper.png"
         return 0
     fi
-    pf_warn "wallpaper.png missing - seeding a generated fallback (drop your art at ${wp} to replace it)"
+    pf_warn "wallpaper.png missing - seeding a generated fallback (drop your art at ${OVERLAY_DIR}/usr/share/backgrounds/retro-os/wallpaper.png to replace it)"
     mkdir -p "$(dirname "${wp}")"
 
     if command -v python3 >/dev/null 2>&1; then
@@ -422,16 +424,36 @@ overlay_hash() {
     } | sha256sum | awk '{print $1}'
 }
 
+cache_overlay_hash() {
+    local hash
+    if ! hash="$(overlay_hash)"; then
+        retro_die "failed to calculate overlay hash"
+    fi
+    [[ -n "${hash}" ]] || retro_die "overlay hash is empty; refusing to stamp build stages"
+    OVERLAY_HASH="${hash}"
+}
+
 stage_hash() {   # <script|string>
     if [[ -f "${SCRIPTS_DIR}/$1" ]]; then
+        [[ -n "${OVERLAY_HASH}" ]] || retro_die "overlay hash was not initialised"
         {
             cat "${SELF_DIR}/config.env" "${SCRIPTS_DIR}/$1"
-            printf '\noverlay:%s\n' "$(overlay_hash)"
+            printf '\noverlay:%s\n' "${OVERLAY_HASH}"
         } | sha256sum | awk '{print $1}'
     else
         # Bootstrap cache depends only on explicit Debian bootstrap inputs.
         printf '%s' "$1" | sha256sum | awk '{print $1}'
     fi
+}
+
+finalized_hash() {
+    [[ -n "${OVERLAY_HASH}" ]] || retro_die "overlay hash was not initialised"
+    {
+        cat "${SELF_DIR}/config.env" \
+            "${SCRIPTS_DIR}/98_finalize.sh" \
+            "${SCRIPTS_DIR}/99_selftest.sh"
+        printf '\noverlay:%s\n' "${OVERLAY_HASH}"
+    } | sha256sum | awk '{print $1}'
 }
 
 stamp_ok() {   # <name> <hash>
@@ -455,7 +477,7 @@ invalidate_from() {   # <stage-script>: drop its stamp and every later one
 clean_previous() {
     retro_info "Cleaning previous build state"
     unmount_chroot || retro_die "cannot clean while mounts are active under ${CHROOT_DIR}"
-    rm -rf "${CHROOT_DIR}" "${IMAGE_DIR}" "${ISO_DIR}" "${STAMP_DIR}"
+    rm -rf "${CHROOT_DIR}" "${IMAGE_DIR}" "${BUILD_ROOT}/iso" "${STAMP_DIR}"
     if (( OPT_DISTCLEAN )); then
         rm -rf "${OUT_DIR}" "${BUILD_ROOT}/logs"
         mkdir -p "${RETRO_LOG_DIR}"
@@ -531,7 +553,10 @@ prepare_chroot_for_scripts() {
         printf '#!/bin/sh\nexit 101\n' > "${CHROOT_DIR}/usr/sbin/policy-rc.d"
         chmod 0755 "${CHROOT_DIR}/usr/sbin/policy-rc.d"
     fi
-    if ! ls "${CHROOT_DIR}"/var/lib/apt/lists/*Packages* >/dev/null 2>&1 && [[ -f "${CHROOT_DIR}/etc/apt/sources.list" ]]; then
+    local sources_list="${CHROOT_DIR}/etc/apt/sources.list"
+    local sources_dir="${CHROOT_DIR}/etc/apt/sources.list.d"
+    if ! ls "${CHROOT_DIR}"/var/lib/apt/lists/*Packages* >/dev/null 2>&1 && \
+       { [[ -f "${sources_list}" ]] || compgen -G "${sources_dir}/*.sources" >/dev/null; }; then
         retro_info "Refreshing apt lists inside the chroot (resume)"
         run_chroot_cmd /usr/bin/apt-get update
     fi
@@ -561,6 +586,10 @@ apply_overlay() {   # <label>
     # Ownership is deliberately NOT preserved: host UIDs (often 1000) would
     # otherwise collide with the in-image user 'retro'.
     cp -a --no-preserve=ownership "${OVERLAY_DIR}/." "${CHROOT_DIR}/"
+    local seeded_wallpaper="${WALLPAPER_SEED_DIR}/wallpaper.png"
+    if [[ -s "${seeded_wallpaper}" && ! -s "${CHROOT_DIR}/usr/share/backgrounds/retro-os/wallpaper.png" ]]; then
+        install -D -m 0644 "${seeded_wallpaper}" "${CHROOT_DIR}/usr/share/backgrounds/retro-os/wallpaper.png"
+    fi
     chown -R root:root "${CHROOT_DIR}/usr/local/bin" "${CHROOT_DIR}/opt" 2>/dev/null || true
     chmod 0755 "${CHROOT_DIR}/usr/local/bin/retro" "${CHROOT_DIR}/opt/retro-ai/retro_ai.py"
 }
@@ -599,7 +628,7 @@ run_stage_pipeline() {
         retro_error "After fixing, re-run ./build.sh (completed stages are skipped)."
         exit 1
     fi
-    stamp_set finalized "$(stage_hash 99_selftest.sh)"
+    stamp_set finalized "$(finalized_hash)"
 
     # Leave a pristine chroot behind
     rm -rf "${CHROOT_DIR}${STAGE_DIR_IN_CHROOT}"
@@ -619,6 +648,9 @@ assert_chroot_quiet() {
         retro_die "mounts are still active under ${CHROOT_DIR}; squashfs would swallow host /dev,/proc. Aborting."
     fi
     [[ -f "${STAMP_DIR}/finalized" ]] || retro_die "chroot has no passing self-test stamp - run ./build.sh without --skip-chroot first"
+    local expected
+    expected="$(finalized_hash)"
+    stamp_ok finalized "${expected}" || retro_die "scripts/overlay changed since last self-test; re-run without --skip-chroot"
 }
 
 build_squashfs() {
@@ -792,8 +824,8 @@ EOF
         --locales="" --fonts="" "boot/grub/grub.cfg=${work}/embedded.cfg" 2>&1 | tee -a "${RETRO_LOG_FILE}"
     [[ -s "${work}/bootx64.efi" ]] || retro_die "grub-mkstandalone produced no bootx64.efi"
 
-    efi_size_mb=$(( ( $(stat -c %s "${work}/bootx64.efi") + 1048575 ) / 1048576 + 10 ))
-    (( efi_size_mb >= 64 )) || efi_size_mb=64
+    efi_size_mb=$(( ( $(stat -c %s "${work}/bootx64.efi") + 1048575 ) / 1048576 + 2 ))
+    (( efi_size_mb >= 16 )) || efi_size_mb=16
 
     local img="${IMAGE_DIR}/boot/grub/efi.img"
     rm -f "${img}"
@@ -888,6 +920,7 @@ main() {
 
     if (( OPT_CLEAN )); then clean_previous; fi
     mkdir -p "${BUILD_ROOT}" "${STAMP_DIR}" "${OUT_DIR}"
+    cache_overlay_hash
 
     if (( OPT_SKIP_CHROOT )); then
         retro_info "--skip-chroot: reusing existing chroot"

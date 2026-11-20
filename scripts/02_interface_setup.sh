@@ -39,7 +39,7 @@ install_graphical_stack() {
         xdg-utils xdg-user-dirs dbus-x11 \
         lightdm lightdm-gtk-greeter \
         openbox obconf tint2 pcmanfm feh picom jgmenu xfce4-terminal \
-        mousepad lxtask lxappearance scrot dmenu \
+        mousepad lxtask lxappearance scrot dmenu zenity \
         network-manager-gnome volumeicon-alsa \
         polkitd pkexec lxpolkit udisks2 \
         arc-theme papirus-icon-theme adwaita-icon-theme gtk2-engines-murrine \
@@ -353,6 +353,86 @@ EOF
     systemctl enable retro-live-fixup.service retro-live-credentials.service
 }
 
+write_wallpaper_helper() {
+    retro_info "Installing custom wallpaper selector"
+    retro_write "${RETRO_BIN_DIR}/retro-wallpaper" 0755 <<'WALLPAPER_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if ! command -v zenity >/dev/null 2>&1; then
+    echo "Wallpaper picker is unavailable (zenity is not installed)." >&2
+    exit 1
+fi
+
+selected="$(zenity --file-selection --title="Choose a Retro OS wallpaper" \
+    --file-filter="Image files | *.png *.jpg *.jpeg *.webp *.bmp" \
+    --file-filter="All files | *")" || exit 0
+[[ -f "${selected}" ]] || exit 0
+
+extension="${selected##*.}"
+extension="${extension,,}"
+case "${extension}" in
+    png|jpg|jpeg|webp|bmp) ;;
+    *) zenity --error --text="Choose a PNG, JPG, JPEG, WEBP or BMP image."; exit 2 ;;
+esac
+
+wallpaper_dir="${HOME}/Pictures/Retro-Wallpapers"
+mkdir -p "${wallpaper_dir}"
+destination="${wallpaper_dir}/wallpaper-$(date +%Y%m%d-%H%M%S).${extension}"
+install -m 0644 -- "${selected}" "${destination}"
+
+config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/pcmanfm/default"
+config_file="${config_dir}/desktop-items-0.conf"
+mkdir -p "${config_dir}"
+python3 - "${config_file}" "${destination}" <<'PY'
+import pathlib
+import sys
+
+config = pathlib.Path(sys.argv[1])
+wallpaper = sys.argv[2]
+lines = config.read_text(encoding="utf-8").splitlines() if config.exists() else []
+out = []
+in_desktop = False
+updated = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        if in_desktop and not updated:
+            out.append(f"wallpaper={wallpaper}")
+            updated = True
+        in_desktop = stripped == "[*]"
+    if in_desktop and stripped.startswith("wallpaper="):
+        if not updated:
+            out.append(f"wallpaper={wallpaper}")
+            updated = True
+        continue
+    out.append(line)
+if not any(line.strip() == "[*]" for line in out):
+    out.extend(["[*]", f"wallpaper={wallpaper}", "wallpaper_mode=stretch"])
+elif not updated:
+    out.append(f"wallpaper={wallpaper}")
+config.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+
+if command -v pcmanfm >/dev/null 2>&1; then
+    pcmanfm --set-wallpaper="${destination}" || {
+        echo "Wallpaper saved; restart the desktop session if it does not update immediately." >&2
+    }
+fi
+zenity --info --title="Retro OS" --text="Wallpaper saved to:\n${destination}\n\nIt will remain after reboot when USB Persistence mode is enabled."
+WALLPAPER_EOF
+    retro_write /usr/share/applications/retro-wallpaper.desktop 0644 <<'DESKTOP_EOF'
+[Desktop Entry]
+Type=Application
+Name=Change Wallpaper
+Comment=Choose and save a custom Retro OS wallpaper
+Exec=retro-wallpaper
+Icon=preferences-desktop-wallpaper
+Terminal=false
+Categories=Settings;DesktopSettings;
+DESKTOP_EOF
+}
+
 write_menu_tools() {
     retro_info "Installing menu generator + tool catalogue"
 
@@ -448,6 +528,7 @@ build_openbox_menu() {
     
     ob_item "Terminal" "xfce4-terminal"
     ob_item "File Manager" "pcmanfm"
+    ob_item "Change Wallpaper" "retro-wallpaper"
     have firefox-esr && ob_item "Web Browser" "firefox-esr"
     have mousepad && ob_item "Text Editor" "mousepad"
     have vlc && ob_item "VLC Media Player" "vlc"
@@ -516,6 +597,7 @@ build_jgmenu_csv() {
     {
         echo "Terminal,xfce4-terminal,utilities-terminal"
         echo "File Manager,pcmanfm,system-file-manager"
+        echo "Change Wallpaper,retro-wallpaper,preferences-desktop-wallpaper"
         have firefox-esr && echo "Web Browser,firefox-esr,firefox-esr"
         have mousepad && echo "Text Editor,mousepad,accessories-text-editor"
         have vlc && echo "VLC Media Player,vlc,vlc"
@@ -673,6 +755,7 @@ def kb(key, cmd):
 
 extra = "    <!-- Retro OS bindings -->\n"
 extra += kb("W-e", "pcmanfm")
+extra += kb("W-w", "retro-wallpaper")
 extra += kb("W-t", "xfce4-terminal")
 extra += kb("C-A-t", "xfce4-terminal")
 extra += kb("W-space", "jgmenu_run")
@@ -1029,6 +1112,7 @@ main() {
     install_login_stack
     write_session_start
     write_live_fixup
+    write_wallpaper_helper
     write_menu_tools
     write_skel_session
     write_skel_tint2
