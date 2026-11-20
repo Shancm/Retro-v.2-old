@@ -39,6 +39,7 @@ class FullPersistenceTests(unittest.TestCase):
         self.assertIn("findmnt -rn -S", self.helper)
         self.assertIn("lsblk -s -nrpo NAME", self.helper)
         self.assertIn("currently running system disk", self.helper)
+        self.assertIn("live_source=", self.helper)
 
     def test_helper_does_not_silently_change_existing_label(self):
         self.assertIn("Refusing to change existing filesystem label", self.helper)
