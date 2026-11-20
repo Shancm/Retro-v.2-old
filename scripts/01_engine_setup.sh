@@ -170,7 +170,7 @@ EOF
 # -----------------------------------------------------------------------------
 configure_locale_time() {
     retro_info "Configuring locale ${RETRO_LOCALE}, timezone ${RETRO_TIMEZONE}, hostname ${RETRO_HOSTNAME}"
-    sed -i "s/^# *\\(${RETRO_LOCALE//./\\.} \\)/\\1/" /etc/locale.gen
+    sed -i "s/^# *\(${RETRO_LOCALE//./\\.} \)/\1/" /etc/locale.gen
     grep -q "^${RETRO_LOCALE} " /etc/locale.gen || echo "${RETRO_LOCALE} UTF-8" >> /etc/locale.gen
     locale-gen
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
