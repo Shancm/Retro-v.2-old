@@ -579,15 +579,15 @@ EOF
 # Live USB persistence helper
 # -----------------------------------------------------------------------------
 install_persistence_helper() {
-    retro_info "Installing safe setup helper for an existing ext filesystem partition"
+    retro_info "Installing non-destructive setup helper for an existing ext persistence partition"
     retro_write /usr/local/sbin/retro-persistence-setup 0755 <<'PERSISTENCE_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
 usage() {
     echo "Usage: sudo retro-persistence-setup /dev/PARTITION"
-    echo "Prepares an EXISTING ext2/3/4 partition for live-boot persistence."
-    echo "It does not create partitions, format filesystems, or erase user files."
+    echo "Prepares an EXISTING ext2/3/4 partition for live-boot full persistence."
+    echo "It never creates partitions, formats filesystems, or deletes user files."
 }
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -596,7 +596,8 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 if [[ "${#}" -ne 1 || "${1}" == "-h" || "${1}" == "--help" ]]; then
     usage
-    exit "$([[ "${#}" -eq 1 ]] && [[ "${1}" =~ ^(-h|--help)$ ]] && echo 0 || echo 2)"
+    if [[ "${#}" -eq 1 && "${1}" =~ ^(-h|--help)$ ]]; then exit 0; fi
+    exit 2
 fi
 
 device="$(readlink -f -- "$1")"
@@ -605,30 +606,49 @@ device="$(readlink -f -- "$1")"
     echo "Refusing whole-disk device; specify an existing partition (for example /dev/sda3)." >&2
     exit 2
 }
+
+# Never relabel or prepare the EFI System Partition.
+part_type="$(lsblk -dnro PARTTYPE -- "${device}" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+if [[ "${part_type}" == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" ]]; then
+    echo "Refusing EFI System Partition; EFI/Boot must remain untouched." >&2
+    exit 2
+fi
+
 fstype="$(blkid -o value -s TYPE -- "${device}" 2>/dev/null || true)"
 case "${fstype}" in
     ext2|ext3|ext4) ;;
-    *) echo "Unsupported or unformatted filesystem '${fstype:-unknown}'. Use an existing ext2/3/4 partition; this tool will not format it." >&2; exit 2 ;;
+    *) echo "Unsupported or unformatted filesystem '${fstype:-unknown}'. Only an existing ext2/3/4 partition is accepted; no formatting will be attempted." >&2; exit 2 ;;
 esac
 
-if findmnt -rn -S "${device}" >/dev/null 2>&1; then
+if findmnt -rn -S "${device}" >/dev/null 2>&1 || [[ -n "$(lsblk -dnro MOUNTPOINTS -- "${device}" 2>/dev/null)" ]]; then
     echo "Partition is mounted. Unmount it safely before setup." >&2
     exit 2
 fi
 
+# Refuse any partition belonging to the currently running root or /boot disk.
 root_source="$(findmnt -nro SOURCE / 2>/dev/null || true)"
 boot_source="$(findmnt -nro SOURCE /boot 2>/dev/null || true)"
-for protected in "${root_source}" "${boot_source}"; do
+live_source="$(findmnt -nro SOURCE /run/live/medium 2>/dev/null || true)"
+# The live medium is often the same USB that the user is trying to configure.
+for protected in "${root_source}" "${boot_source}" "${live_source}"; do
     [[ -n "${protected}" ]] || continue
     protected_real="$(readlink -f -- "${protected}" 2>/dev/null || printf '%s' "${protected}")"
-    [[ "${device}" != "${protected_real}" ]] || {
-        echo "Refusing to modify the currently mounted system partition." >&2
-        exit 2
-    }
+    while IFS= read -r ancestor; do
+        [[ -n "${ancestor}" ]] || continue
+        ancestor_real="$(readlink -f -- "${ancestor}" 2>/dev/null || printf '%s' "${ancestor}")"
+        [[ "${device}" != "${ancestor_real}" ]] || {
+            echo "Refusing a partition on the currently running system disk (${protected})." >&2
+            exit 2
+        }
+    done < <(lsblk -s -nrpo NAME -- "${protected_real}" 2>/dev/null || printf '%s\n' "${protected_real}")
 done
 
 current_label="$(blkid -o value -s LABEL -- "${device}" 2>/dev/null || true)"
 if [[ "${current_label}" != "persistence" ]]; then
+    if [[ -n "${current_label}" ]]; then
+        echo "Refusing to change existing filesystem label '${current_label}'. Back up and explicitly rename it to 'persistence' first." >&2
+        exit 2
+    fi
     e2label "${device}" persistence
 fi
 
@@ -646,7 +666,7 @@ elif ! grep -Fxq '/ union' "${conf}"; then
     printf '\n/ union\n' >> "${conf}"
 fi
 sync
-echo "Persistence partition prepared: ${device} (label=persistence)"
+echo "Full persistence prepared: ${device} (label=persistence, / union)"
 echo "Existing files were not formatted or deleted."
 echo "Reboot and choose 'Retro OS Live - Persistence' from the boot menu."
 PERSISTENCE_EOF
