@@ -203,10 +203,21 @@ xset b off 2>/dev/null || true
 
 start_once lxpolkit lxpolkit
 
+wallpaper="${HOME}/.config/retro/wallpaper.png"
+for extension in jpg webp; do
+    candidate="${HOME}/.config/retro/wallpaper.${extension}"
+    if [[ -s "${candidate}" ]]; then
+        wallpaper="${candidate}"
+        break
+    fi
+done
+[[ -s "${wallpaper}" ]] || wallpaper="/usr/share/backgrounds/retro-os/wallpaper.png"
+
 if command -v pcmanfm >/dev/null 2>&1; then
+    pcmanfm --set-wallpaper="${wallpaper}" >/dev/null 2>&1 || true
     start_once pcmanfm pcmanfm --desktop
 elif command -v feh >/dev/null 2>&1; then
-    feh --bg-scale /usr/share/backgrounds/retro-os/wallpaper.png &
+    feh --bg-fill "${wallpaper}" &
 fi
 sleep 1
 
@@ -353,6 +364,29 @@ EOF
     systemctl enable retro-live-fixup.service retro-live-credentials.service
 }
 
+write_wallpaper_picker() {
+    retro_info "Installing optional Openbox wallpaper file picker"
+    retro_write "\${RETRO_HELPER_DIR}/retro-wallpaper-picker" 0755 <<'PICKER_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+trap 'rc=$?; logger -t retro-wallpaper-picker -- "failed at line \${LINENO} (exit \${rc})" 2>/dev/null || true; exit "\${rc}"' ERR
+
+if command -v zenity >/dev/null 2>&1; then
+    selected="$(zenity --file-selection --title="Choose a wallpaper" \
+        --file-filter="Images | *.png *.jpg *.jpeg *.webp")" || exit 0
+elif command -v yad >/dev/null 2>&1; then
+    selected="$(yad --file-selection --title="Choose a wallpaper" \
+        --file-filter="Images | *.png *.jpg *.jpeg *.webp")" || exit 0
+else
+    printf '%s\n' "No supported file picker (zenity/yad) is installed." >&2
+    exit 127
+fi
+
+[[ -n "\${selected}" && -f "\${selected}" ]] || exit 0
+exec /usr/local/bin/retro wallpaper set "\${selected}"
+PICKER_EOF
+}
+
 write_menu_tools() {
     retro_info "Installing menu generator + tool catalogue"
 
@@ -448,6 +482,7 @@ build_openbox_menu() {
     
     ob_item "Terminal" "xfce4-terminal"
     ob_item "File Manager" "pcmanfm"
+    if have zenity || have yad; then ob_item "Change wallpaper..." "/opt/retro-os/bin/retro-wallpaper-picker"; fi
     have firefox-esr && ob_item "Web Browser" "firefox-esr"
     have mousepad && ob_item "Text Editor" "mousepad"
     have vlc && ob_item "VLC Media Player" "vlc"
@@ -815,6 +850,7 @@ systray_icon_asb = 100 0 0
 systray_monitor = 1
 systray_name_filter =
 
+# Tint2 formats the local system clock using the selected /etc/localtime zone.
 time1_format = %H:%M
 time1_font = ${RETRO_UI_FONT} Bold 10
 time2_format = %d-%m-%Y
@@ -1029,6 +1065,7 @@ main() {
     install_login_stack
     write_session_start
     write_live_fixup
+    write_wallpaper_picker
     write_menu_tools
     write_skel_session
     write_skel_tint2
