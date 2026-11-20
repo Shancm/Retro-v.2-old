@@ -66,23 +66,33 @@ install_grub_btrfs() {
             https://api.github.com/repos/Antynea/grub-btrfs/releases/latest 2>/dev/null \
           | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null || true)"
     if [[ -z "${tag}" ]]; then
-        tag="v${RETRO_GRUB_BTRFS_PIN}"
-        retro_warn "GitHub API unavailable - using pinned grub-btrfs ${tag}"
+        # RETRO_GRUB_BTRFS_PIN is the complete upstream tag (including a
+        # leading "v" where the project uses one). Do not add a prefix:
+        # upstream has both "4.13" and "v4.14" tag styles.
+        tag="${RETRO_GRUB_BTRFS_PIN}"
+        retro_warn "GitHub API unavailable - using pinned grub-btrfs tag ${tag}"
     fi
+    [[ -n "${tag}" ]] || retro_die "No grub-btrfs release tag is configured"
     tarball_url="https://github.com/Antynea/grub-btrfs/archive/refs/tags/${tag}.tar.gz"
 
     if ! retro_retry 3 5 curl -fsSL --connect-timeout 15 --max-time 300 -o "${work}/gb.tar.gz" "${tarball_url}"; then
-        retro_warn "Could not download grub-btrfs ${tag}; Btrfs snapshot boot entries will be unavailable"
         rm -rf "${work}"
-        return 0
+        retro_die "Could not download grub-btrfs ${tag}; refusing to continue without the required snapshot boot integration"
     fi
 
     tar -xzf "${work}/gb.tar.gz" -C "${work}"
     local src
     src="$(find "${work}" -maxdepth 1 -type d -name 'grub-btrfs*' | head -n1)"
-    [[ -n "${src}" ]] || retro_die "grub-btrfs source directory not found in tarball"
+    if [[ -z "${src}" ]]; then
+        rm -rf "${work}"
+        retro_die "grub-btrfs source directory not found in tarball"
+    fi
 
     ( cd "${src}" && make install )
+    if [[ ! -x /etc/grub.d/41_snapshots-btrfs ]]; then
+        rm -rf "${work}"
+        retro_die "grub-btrfs install completed but /etc/grub.d/41_snapshots-btrfs is missing or not executable"
+    fi
 
     # Debian paths for grub tooling
     if [[ -d /etc/default/grub-btrfs ]]; then
