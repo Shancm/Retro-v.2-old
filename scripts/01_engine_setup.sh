@@ -628,7 +628,9 @@ fi
 # Refuse any partition belonging to the currently running root or /boot disk.
 root_source="$(findmnt -nro SOURCE / 2>/dev/null || true)"
 boot_source="$(findmnt -nro SOURCE /boot 2>/dev/null || true)"
-for protected in "${root_source}" "${boot_source}"; do
+live_source="$(findmnt -nro SOURCE /run/live/medium 2>/dev/null || true)"
+# The live medium is often the same USB that the user is trying to configure.
+for protected in "${root_source}" "${boot_source}" "${live_source}"; do
     [[ -n "${protected}" ]] || continue
     protected_real="$(readlink -f -- "${protected}" 2>/dev/null || printf '%s' "${protected}")"
     while IFS= read -r ancestor; do
