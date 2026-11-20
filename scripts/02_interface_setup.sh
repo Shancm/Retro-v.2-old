@@ -251,7 +251,7 @@ if grep -qw 'retro.install=1' /proc/cmdline 2>/dev/null && command -v calamares 
     pkexec calamares &
 fi
 
-wait
+wait || true
 EOF
 }
 
