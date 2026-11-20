@@ -176,7 +176,7 @@ configure_locale_time() {
     printf 'LANG=%s\n' "${RETRO_LOCALE}" > /etc/default/locale
 
     local zoneinfo="/usr/share/zoneinfo/${RETRO_TIMEZONE}"
-    [[ "${RETRO_TIMEZONE}" != /* && "${RETRO_TIMEZONE}" != *".."* && -e "${zoneinfo}" ]] \
+    [[ "${RETRO_TIMEZONE}" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -e "${zoneinfo}" ]] \
         || retro_die "Invalid RETRO_TIMEZONE: ${RETRO_TIMEZONE}"
     [[ "${RETRO_TZ_AUTODETECT}" == "0" || "${RETRO_TZ_AUTODETECT}" == "1" ]] \
         || retro_die "RETRO_TZ_AUTODETECT must be 0 or 1"
